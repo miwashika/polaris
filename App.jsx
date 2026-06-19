@@ -123,6 +123,57 @@ function TrendChart({ data }) {
   );
 }
 
+// ── スワイプ行コンポーネント ───────────────────────────
+function SwipeRow({ rowId, openId, setOpenId, onDelete, radius=12, actionWidth=72, children }) {
+  const [offset, setOffset] = React.useState(0);
+  const [live,   setLive]   = React.useState(false);
+  const drag = React.useRef({ x0:0, y0:0, isH:null, wasOpen:false, cur:0 });
+  const isOpen = openId === rowId;
+
+  React.useEffect(()=>{ if(!isOpen && !live) setOffset(0); },[isOpen, live]);
+
+  const ts=(e)=>{
+    const t=e.touches[0];
+    const start=isOpen?-actionWidth:0;
+    drag.current={x0:t.clientX,y0:t.clientY,isH:null,wasOpen:isOpen,cur:start};
+    setOffset(start); setLive(true);
+  };
+  const tm=(e)=>{
+    const r=drag.current, t=e.touches[0];
+    const dx=t.clientX-r.x0, dy=t.clientY-r.y0;
+    if(r.isH===null){
+      if(Math.abs(dx)<5&&Math.abs(dy)<5) return;
+      r.isH=Math.abs(dx)>Math.abs(dy);
+    }
+    if(!r.isH){setLive(false);return;}
+    const next=Math.min(4,Math.max(-actionWidth,(r.wasOpen?-actionWidth:0)+dx));
+    r.cur=next; setOffset(next);
+  };
+  const te=()=>{
+    const r=drag.current; setLive(false);
+    if(!r.isH) return;
+    if(r.cur<-actionWidth/2){setOpenId(rowId); setOffset(-actionWidth);}
+    else{if(isOpen)setOpenId(null); setOffset(0);}
+  };
+
+  const shown=live?offset:(isOpen?-actionWidth:0);
+  return(
+    <div style={{position:'relative',overflow:'hidden',borderRadius:radius}}>
+      <div style={{position:'absolute',inset:0,display:'flex',justifyContent:'flex-end'}}>
+        <button
+          onClick={(e)=>{e.stopPropagation();setOpenId(null);onDelete(rowId);}}
+          style={{width:actionWidth,border:'none',background:C.q1,color:'#fff',cursor:'pointer',display:'flex',flexDirection:'column',alignItems:'center',justifyContent:'center',gap:3,fontSize:11,fontWeight:700,borderRadius:`0 ${radius}px ${radius}px 0`}}
+        ><Trash2 size={16}/><span>削除</span></button>
+      </div>
+      <div
+        onTouchStart={ts} onTouchMove={tm} onTouchEnd={te}
+        onClickCapture={(e)=>{if(isOpen){e.stopPropagation();setOpenId(null);}}}
+        style={{transform:`translateX(${shown}px)`,transition:live?'none':'transform 0.22s cubic-bezier(0.25,0.46,0.45,0.94)',touchAction:'pan-y',position:'relative',zIndex:1,willChange:'transform'}}
+      >{children}</div>
+    </div>
+  );
+}
+
 // ── メインコンポーネント ──────────────────────────────
 export default function App() {
   const [tasks,    setTasks]    = useState(HAS_GAS ? [] : SEED);
@@ -144,8 +195,9 @@ export default function App() {
   const [polaris,  setPolaris]  = useState(POLARIS_SEED);
   const [polarisInput,setPolarisInput]=useState("");
   const [align,    setAlign]    = useState({});
-  const [checking, setChecking] = useState(false);
-  const [checkErr, setCheckErr] = useState(null);
+  const [checking,   setChecking]   = useState(false);
+  const [checkErr,   setCheckErr]   = useState(null);
+  const [openSwipeId,setOpenSwipeId]= useState(null);
 
   const week = useMemo(()=>Array.from({length:7},(_,i)=>{
     const d=addDays(TODAY,i);
@@ -363,19 +415,20 @@ export default function App() {
       </div>
     );
     return(
-      <div onClick={()=>toggleDone(t.id)} style={{ display:"flex",alignItems:"center",gap:12,background:"#fff",borderRadius:12,padding:"13px 14px",border:`1px solid ${C.line}`,borderLeft:`3px solid ${meta.color}`,cursor:"pointer",transition:"background .1s" }}>
-        <div style={{ width:22,height:22,borderRadius:7,border:`1.5px solid ${meta.color}55`,background:"#fff",display:"grid",placeItems:"center",flexShrink:0,color:meta.color }}><Check size={13}/></div>
-        <div style={{ flex:1,minWidth:0 }}>
-          <div style={{ fontSize:14,fontWeight:600,color:C.ink,lineHeight:1.35 }}>{t.title}</div>
-          <div style={{ display:"flex",alignItems:"center",gap:7,marginTop:4,flexWrap:"wrap" }}>
-            <span style={{ fontSize:11,color:CAT[t.cat],fontWeight:600 }}>{t.cat}</span>
-            <span style={{ fontFamily:MONO,fontSize:11,color:d!==null&&d<=urgentDays?meta.color:C.sub }}>{t.due?`${t.due.slice(5).replace("-","/")} · ${relText(d)}`:aging?`停滞${ageDays(t.createdAt)}日`:"日取り未定"}</span>
-            {warn&&<span className="pulse" style={{ fontSize:10,fontWeight:700,color:C.warn }}>→第1</span>}
+      <SwipeRow rowId={t.id} openId={openSwipeId} setOpenId={setOpenSwipeId} onDelete={handleDelete} radius={12}>
+        <div onClick={()=>toggleDone(t.id)} style={{ display:"flex",alignItems:"center",gap:12,background:"#fff",padding:"13px 14px",border:`1px solid ${C.line}`,borderLeft:`3px solid ${meta.color}`,cursor:"pointer",transition:"background .1s" }}>
+          <div style={{ width:22,height:22,borderRadius:7,border:`1.5px solid ${meta.color}55`,background:"#fff",display:"grid",placeItems:"center",flexShrink:0,color:meta.color }}><Check size={13}/></div>
+          <div style={{ flex:1,minWidth:0 }}>
+            <div style={{ fontSize:14,fontWeight:600,color:C.ink,lineHeight:1.35 }}>{t.title}</div>
+            <div style={{ display:"flex",alignItems:"center",gap:7,marginTop:4,flexWrap:"wrap" }}>
+              <span style={{ fontSize:11,color:CAT[t.cat],fontWeight:600 }}>{t.cat}</span>
+              <span style={{ fontFamily:MONO,fontSize:11,color:d!==null&&d<=urgentDays?meta.color:C.sub }}>{t.due?`${t.due.slice(5).replace("-","/")} · ${relText(d)}`:aging?`停滞${ageDays(t.createdAt)}日`:"日取り未定"}</span>
+              {warn&&<span className="pulse" style={{ fontSize:10,fontWeight:700,color:C.warn }}>→第1</span>}
+            </div>
           </div>
+          <span style={{ fontFamily:MONO,fontSize:10.5,fontWeight:800,color:meta.color }}>{meta.label}</span>
         </div>
-        <span style={{ fontFamily:MONO,fontSize:10.5,fontWeight:800,color:meta.color }}>{meta.label}</span>
-        <button onClick={(e)=>{e.stopPropagation();handleDelete(t.id);}} title="削除" style={{ ...miniBtn,flexShrink:0,color:C.sub }}><Trash2 size={12}/></button>
-      </div>
+      </SwipeRow>
     );
   };
 
@@ -392,66 +445,69 @@ export default function App() {
     };
     const frame={background:isSel?"#fff":aging?C.ageBg:TINT[q],border:`${q===1?2:1.5}px solid ${meta.color}`,boxShadow:isSel?`0 0 0 3px ${meta.color}33`:"0 1px 2px #19232d0a",opacity:dragId===t.id?0.4:1,cursor:"pointer",transition:"box-shadow .15s"};
     if(mode==="bar")return(
-      <div {...dragProps} style={{...frame,borderRadius:7,padding:"5px 7px"}}>
-        <div style={{display:"flex",alignItems:"center",gap:5}}>
-          {t.committed&&<Pin size={10} color={C.q2} fill={C.q2}/>}
-          <span style={{fontFamily:MONO,fontSize:9.5,fontWeight:800,color:meta.color}}>{meta.label}</span>
-          <span style={{fontSize:12,color:C.ink,fontWeight:500,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis",flex:1,minWidth:0}}>{t.title}</span>
-          {alignBadge(t)}
+      <SwipeRow rowId={t.id} openId={openSwipeId} setOpenId={setOpenSwipeId} onDelete={handleDelete} radius={7} actionWidth={60}>
+        <div {...dragProps} style={{...frame,borderRadius:7,padding:"5px 7px"}}>
+          <div style={{display:"flex",alignItems:"center",gap:5}}>
+            {t.committed&&<Pin size={10} color={C.q2} fill={C.q2}/>}
+            <span style={{fontFamily:MONO,fontSize:9.5,fontWeight:800,color:meta.color}}>{meta.label}</span>
+            <span style={{fontSize:12,color:C.ink,fontWeight:500,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis",flex:1,minWidth:0}}>{t.title}</span>
+            {alignBadge(t)}
+          </div>
+          <div style={{display:"flex",alignItems:"center",gap:5,marginTop:3}}>
+            <span style={{width:7,height:7,borderRadius:2,background:CAT[t.cat],flexShrink:0}}/>
+            <span style={{fontFamily:MONO,fontSize:9.5,color:d!==null&&d<=urgentDays?meta.color:C.sub}}>{relText(d)}</span>
+            {warn&&<span className="pulse" style={{fontSize:9,fontWeight:700,color:C.warn}}>→第1</span>}
+            <button onClick={(e)=>{e.stopPropagation();toggleDone(t.id);}} aria-label="完了" style={{marginLeft:"auto",width:17,height:17,borderRadius:5,border:`1px solid ${meta.color}55`,background:"#fff",display:"grid",placeItems:"center",cursor:"pointer",color:meta.color}}><Check size={10}/></button>
+          </div>
         </div>
-        <div style={{display:"flex",alignItems:"center",gap:5,marginTop:3}}>
-          <span style={{width:7,height:7,borderRadius:2,background:CAT[t.cat],flexShrink:0}}/>
-          <span style={{fontFamily:MONO,fontSize:9.5,color:d!==null&&d<=urgentDays?meta.color:C.sub}}>{relText(d)}</span>
-          {warn&&<span className="pulse" style={{fontSize:9,fontWeight:700,color:C.warn}}>→第1</span>}
-          <button onClick={(e)=>{e.stopPropagation();toggleDone(t.id);}} aria-label="完了" style={{marginLeft:"auto",width:17,height:17,borderRadius:5,border:`1px solid ${meta.color}55`,background:"#fff",display:"grid",placeItems:"center",cursor:"pointer",color:meta.color}}><Check size={10}/></button>
-          <button onClick={(e)=>{e.stopPropagation();handleDelete(t.id);}} aria-label="削除" style={{width:17,height:17,borderRadius:5,border:`1px solid ${C.line}`,background:"#fff",display:"grid",placeItems:"center",cursor:"pointer",color:C.sub}}><Trash2 size={9}/></button>
-        </div>
-      </div>
+      </SwipeRow>
     );
     return(
-      <div {...dragProps} style={{...frame,borderRadius:11,padding:"9px 11px"}}>
-        <div style={{display:"flex",alignItems:"center",gap:6,marginBottom:5}}>
-          {t.committed&&<Pin size={12} color={C.q2} fill={C.q2}/>}
-          <span style={{fontFamily:MONO,fontSize:10.5,fontWeight:800,color:meta.color}}>{meta.label}</span>
-          <span style={{fontSize:10.5,color:CAT[t.cat],fontWeight:600,background:`${CAT[t.cat]}14`,padding:"1px 7px",borderRadius:20}}>{t.cat}</span>
-          {alignBadge(t)}
-          {aging&&<span style={{fontFamily:MONO,fontSize:10,fontWeight:700,color:C.age,marginLeft:"auto"}}>停滞{ageDays(t.createdAt)}日</span>}
-          {!aging&&<span style={{fontFamily:MONO,fontSize:10,color:C.sub,marginLeft:"auto"}}>{t.span}</span>}
+      <SwipeRow rowId={t.id} openId={openSwipeId} setOpenId={setOpenSwipeId} onDelete={handleDelete} radius={11}>
+        <div {...dragProps} style={{...frame,borderRadius:11,padding:"9px 11px"}}>
+          <div style={{display:"flex",alignItems:"center",gap:6,marginBottom:5}}>
+            {t.committed&&<Pin size={12} color={C.q2} fill={C.q2}/>}
+            <span style={{fontFamily:MONO,fontSize:10.5,fontWeight:800,color:meta.color}}>{meta.label}</span>
+            <span style={{fontSize:10.5,color:CAT[t.cat],fontWeight:600,background:`${CAT[t.cat]}14`,padding:"1px 7px",borderRadius:20}}>{t.cat}</span>
+            {alignBadge(t)}
+            {aging&&<span style={{fontFamily:MONO,fontSize:10,fontWeight:700,color:C.age,marginLeft:"auto"}}>停滞{ageDays(t.createdAt)}日</span>}
+            {!aging&&<span style={{fontFamily:MONO,fontSize:10,color:C.sub,marginLeft:"auto"}}>{t.span}</span>}
+          </div>
+          <div style={{fontSize:13.5,color:C.ink,lineHeight:1.35,fontWeight:500}}>{t.title}</div>
+          {(t.tags||[]).length>0&&<div style={{display:"flex",gap:4,flexWrap:"wrap",marginTop:6}}>{t.tags.map(tg=><span key={tg} style={{fontSize:10,color:C.sub,background:C.lineSoft,padding:"1px 7px",borderRadius:5}}>{tg}</span>)}</div>}
+          <div style={{display:"flex",alignItems:"center",gap:6,marginTop:7}}>
+            <span style={{display:"inline-flex",alignItems:"center",gap:5}}>
+              <span style={{display:"inline-flex",alignItems:"center",gap:3,fontSize:10.5,color:C.sub}}><Calendar size={12}/>日付</span>
+              <input type="date" value={t.due||""} min={keyOf(TODAY)} draggable={false} onMouseDown={(e)=>e.stopPropagation()} onClick={(e)=>e.stopPropagation()} onChange={(e)=>{e.stopPropagation();setDue(t.id,e.target.value||null);}} style={{fontFamily:MONO,fontSize:11,color:t.due?C.ink:C.sub,border:`1px solid ${C.line}`,borderRadius:7,padding:"3px 6px",background:"#fff",cursor:"pointer",colorScheme:"light"}}/>
+            </span>
+            {warn&&<span className="pulse" style={{fontSize:10.5,fontWeight:700,color:C.warn,background:C.warnSoft,padding:"1px 8px",borderRadius:20}}>第1まであと{d-urgentDays}日</span>}
+            <span style={{marginLeft:"auto",display:"flex",gap:4}}>
+              <button onClick={(e)=>{e.stopPropagation();toggleField(t.id,"waiting");}} title="待ちにする" style={miniBtn}><Pause size={12}/></button>
+              <button onClick={(e)=>{e.stopPropagation();toggleField(t.id,"someday");}} title="Somedayへ" style={miniBtn}><Archive size={12}/></button>
+              <button onClick={(e)=>{e.stopPropagation();toggleDone(t.id);}} aria-label="完了" style={{...miniBtn,color:C.q2}}><Check size={13}/></button>
+            </span>
+          </div>
         </div>
-        <div style={{fontSize:13.5,color:C.ink,lineHeight:1.35,fontWeight:500}}>{t.title}</div>
-        {(t.tags||[]).length>0&&<div style={{display:"flex",gap:4,flexWrap:"wrap",marginTop:6}}>{t.tags.map(tg=><span key={tg} style={{fontSize:10,color:C.sub,background:C.lineSoft,padding:"1px 7px",borderRadius:5}}>{tg}</span>)}</div>}
-        <div style={{display:"flex",alignItems:"center",gap:6,marginTop:7}}>
-          <span style={{display:"inline-flex",alignItems:"center",gap:5}}>
-            <span style={{display:"inline-flex",alignItems:"center",gap:3,fontSize:10.5,color:C.sub}}><Calendar size={12}/>日付</span>
-            <input type="date" value={t.due||""} min={keyOf(TODAY)} draggable={false} onMouseDown={(e)=>e.stopPropagation()} onClick={(e)=>e.stopPropagation()} onChange={(e)=>{e.stopPropagation();setDue(t.id,e.target.value||null);}} style={{fontFamily:MONO,fontSize:11,color:t.due?C.ink:C.sub,border:`1px solid ${C.line}`,borderRadius:7,padding:"3px 6px",background:"#fff",cursor:"pointer",colorScheme:"light"}}/>
-          </span>
-          {warn&&<span className="pulse" style={{fontSize:10.5,fontWeight:700,color:C.warn,background:C.warnSoft,padding:"1px 8px",borderRadius:20}}>第1まであと{d-urgentDays}日</span>}
-          <span style={{marginLeft:"auto",display:"flex",gap:4}}>
-            <button onClick={(e)=>{e.stopPropagation();toggleField(t.id,"waiting");}} title="待ちにする" style={miniBtn}><Pause size={12}/></button>
-            <button onClick={(e)=>{e.stopPropagation();toggleField(t.id,"someday");}} title="Somedayへ" style={miniBtn}><Archive size={12}/></button>
-            <button onClick={(e)=>{e.stopPropagation();toggleDone(t.id);}} aria-label="完了" style={{...miniBtn,color:C.q2}}><Check size={13}/></button>
-            <button onClick={(e)=>{e.stopPropagation();handleDelete(t.id);}} aria-label="削除" title="削除" style={{...miniBtn,color:C.sub}}><Trash2 size={12}/></button>
-          </span>
-        </div>
-      </div>
+      </SwipeRow>
     );
   };
 
   const Chip=({name})=>{ const on=filter===name,col=name==="すべて"?C.ink:CAT[name]; return <button onClick={()=>setFilter(name)} style={{fontSize:12,fontWeight:600,padding:"4px 12px",borderRadius:20,cursor:"pointer",border:`1px solid ${on?col:C.line}`,color:on?"#fff":C.sub,background:on?col:"#fff"}}>{name}</button>; };
   const TagChip=({name})=>{ const on=tagFilter===name; return <button onClick={()=>setTagFilter(on?null:name)} style={{fontSize:11,fontWeight:600,padding:"3px 10px",borderRadius:6,cursor:"pointer",border:`1px solid ${on?C.ink:C.line}`,color:on?"#fff":C.sub,background:on?C.ink:"#fff"}}>{name}</button>; };
   const HoldRow=({t,kind})=>(
-    <div style={{display:"flex",alignItems:"center",gap:9,padding:"8px 10px",border:`1px solid ${C.line}`,borderLeft:`3px solid ${kind==="wait"?C.q3:C.sub}`,borderRadius:9,background:"#fff"}}>
-      <span style={{width:7,height:7,borderRadius:2,background:CAT[t.cat],flexShrink:0}}/>
-      <div style={{flex:1,minWidth:0}}>
-        <div style={{fontSize:13,color:C.ink,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>{t.title}</div>
-        <div style={{display:"flex",gap:7,marginTop:2}}>
-          <span style={{fontSize:10.5,color:CAT[t.cat],fontWeight:600}}>{t.cat}</span>
-          <span style={{fontFamily:MONO,fontSize:10.5,color:C.sub}}>{kind==="wait"?`${ageDays(t.createdAt)}日待機中`:t.span}</span>
+    <SwipeRow rowId={t.id} openId={openSwipeId} setOpenId={setOpenSwipeId} onDelete={handleDelete} radius={9}>
+      <div style={{display:"flex",alignItems:"center",gap:9,padding:"8px 10px",border:`1px solid ${C.line}`,borderLeft:`3px solid ${kind==="wait"?C.q3:C.sub}`,background:"#fff"}}>
+        <span style={{width:7,height:7,borderRadius:2,background:CAT[t.cat],flexShrink:0}}/>
+        <div style={{flex:1,minWidth:0}}>
+          <div style={{fontSize:13,color:C.ink,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>{t.title}</div>
+          <div style={{display:"flex",gap:7,marginTop:2}}>
+            <span style={{fontSize:10.5,color:CAT[t.cat],fontWeight:600}}>{t.cat}</span>
+            <span style={{fontFamily:MONO,fontSize:10.5,color:C.sub}}>{kind==="wait"?`${ageDays(t.createdAt)}日待機中`:t.span}</span>
+          </div>
         </div>
+        <button onClick={()=>toggleField(t.id,kind==="wait"?"waiting":"someday")} style={{flexShrink:0,display:"flex",alignItems:"center",gap:4,fontSize:11,color:C.sub,background:"#fff",border:`1px solid ${C.line}`,borderRadius:7,padding:"4px 8px",cursor:"pointer"}}><RotateCcw size={12}/>ボードへ</button>
       </div>
-      <button onClick={()=>toggleField(t.id,kind==="wait"?"waiting":"someday")} style={{flexShrink:0,display:"flex",alignItems:"center",gap:4,fontSize:11,color:C.sub,background:"#fff",border:`1px solid ${C.line}`,borderRadius:7,padding:"4px 8px",cursor:"pointer"}}><RotateCcw size={12}/>ボードへ</button>
-      <button onClick={()=>handleDelete(t.id)} aria-label="削除" title="削除" style={{...miniBtn,flexShrink:0,color:C.sub}}><Trash2 size={12}/></button>
-    </div>
+    </SwipeRow>
   );
 
   const banner=(d,label)=>(
