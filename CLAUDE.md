@@ -264,3 +264,13 @@ SPREADSHEET_ID=（完了ログ用スプレッドシートのID）
 - `[第N]`プレフィックスはPWAが**毎回書き込み時に再計算**する（保存しない）。
 - PWAは`localStorage`不使用（Artifactの制約）。実装ではindexedDBまたはsessionStorageを使う。
 - サンプルデータ（SEED）はapi.jsがGAS未接続時のフォールバックとして残す。
+
+---
+
+## 開発ルール
+
+**ルール: 機能の追加・変更・バグ修正を行った際は、作業完了の報告前に必ず `CHANGELOG.md` へその内容を追記すること。**
+
+- 形式: `## [バージョン] - YYYY-MM-DD · ラベル` の下に `### Added / Changed / Fixed / Removed` で分類して記載
+- バージョンは `package.json` の `version` フィールドと同期させる
+- 軽微なリファクタリングや文言修正は省略可。ユーザーの操作・動作に影響する変更はすべて記録する
