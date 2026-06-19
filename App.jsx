@@ -2,12 +2,13 @@ import React, { useState, useMemo, useEffect, useCallback } from "react";
 import {
   fetchTasks,
   createTask,
-  setDue    as apiSetDue,
+  setDue     as apiSetDue,
   completeTask,
-  setField  as apiSetField,
+  setField   as apiSetField,
+  deleteTask as apiDeleteTask,
   HAS_GAS,
 } from "./api.js";
-import { Check, RotateCcw, Pin, Pause, Archive, Sun, ListChecks, X, Calendar, Star, Settings, Inbox } from "lucide-react";
+import { Check, RotateCcw, Pin, Pause, Archive, Sun, ListChecks, X, Calendar, Star, Settings, Inbox, Trash2 } from "lucide-react";
 
 /**
  * 第2領域ボード v2 — 「今日（focus）」と「整理（plan）」の2モード
@@ -225,6 +226,13 @@ export default function App() {
       setCapturing(false);
     }
   };
+  const handleDelete=async(id)=>{
+    if(!window.confirm('このタスクを完全に削除しますか？')) return;
+    const t=tasks.find(x=>x.id===id);
+    setTasks(ts=>ts.filter(x=>x.id!==id));
+    if(t?.listId){ try{ await apiDeleteTask(t.id,t.listId); }catch(_){} }
+  };
+
   const addPolaris=()=>{ const v=polarisInput.trim(); if(!v)return; setPolaris(p=>[...p,{id:Date.now(),text:v}]); setPolarisInput(""); };
   const delPolaris=(id)=>setPolaris(p=>p.filter(x=>x.id!==id));
   const place=(id,due)=>{ setDue(id,due); setSelected(null); };
@@ -351,6 +359,7 @@ export default function App() {
           <span style={{ fontFamily:MONO,fontSize:12,color:d!==null&&d<=urgentDays?meta.color:C.sub,marginLeft:"auto" }}>{t.due?`${t.due.slice(5).replace("-","/")} · ${relText(d)}`:aging?`停滞${ageDays(t.createdAt)}日`:"日取り未定"}</span>
         </div>
         <button onClick={()=>toggleDone(t.id)} style={{ width:"100%",display:"flex",alignItems:"center",justifyContent:"center",gap:8,fontSize:14,fontWeight:700,color:"#fff",background:meta.color,border:"none",borderRadius:11,padding:"11px",cursor:"pointer" }}><Check size={16}/>完了にする</button>
+        <button onClick={()=>handleDelete(t.id)} style={{ width:"100%",marginTop:8,display:"flex",alignItems:"center",justifyContent:"center",gap:6,fontSize:12,color:C.sub,background:"none",border:`1px solid ${C.line}`,borderRadius:11,padding:"8px",cursor:"pointer" }}><Trash2 size={13}/>削除</button>
       </div>
     );
     return(
@@ -365,6 +374,7 @@ export default function App() {
           </div>
         </div>
         <span style={{ fontFamily:MONO,fontSize:10.5,fontWeight:800,color:meta.color }}>{meta.label}</span>
+        <button onClick={(e)=>{e.stopPropagation();handleDelete(t.id);}} title="削除" style={{ ...miniBtn,flexShrink:0,color:C.sub }}><Trash2 size={12}/></button>
       </div>
     );
   };
@@ -394,6 +404,7 @@ export default function App() {
           <span style={{fontFamily:MONO,fontSize:9.5,color:d!==null&&d<=urgentDays?meta.color:C.sub}}>{relText(d)}</span>
           {warn&&<span className="pulse" style={{fontSize:9,fontWeight:700,color:C.warn}}>→第1</span>}
           <button onClick={(e)=>{e.stopPropagation();toggleDone(t.id);}} aria-label="完了" style={{marginLeft:"auto",width:17,height:17,borderRadius:5,border:`1px solid ${meta.color}55`,background:"#fff",display:"grid",placeItems:"center",cursor:"pointer",color:meta.color}}><Check size={10}/></button>
+          <button onClick={(e)=>{e.stopPropagation();handleDelete(t.id);}} aria-label="削除" style={{width:17,height:17,borderRadius:5,border:`1px solid ${C.line}`,background:"#fff",display:"grid",placeItems:"center",cursor:"pointer",color:C.sub}}><Trash2 size={9}/></button>
         </div>
       </div>
     );
@@ -419,6 +430,7 @@ export default function App() {
             <button onClick={(e)=>{e.stopPropagation();toggleField(t.id,"waiting");}} title="待ちにする" style={miniBtn}><Pause size={12}/></button>
             <button onClick={(e)=>{e.stopPropagation();toggleField(t.id,"someday");}} title="Somedayへ" style={miniBtn}><Archive size={12}/></button>
             <button onClick={(e)=>{e.stopPropagation();toggleDone(t.id);}} aria-label="完了" style={{...miniBtn,color:C.q2}}><Check size={13}/></button>
+            <button onClick={(e)=>{e.stopPropagation();handleDelete(t.id);}} aria-label="削除" title="削除" style={{...miniBtn,color:C.sub}}><Trash2 size={12}/></button>
           </span>
         </div>
       </div>
@@ -438,6 +450,7 @@ export default function App() {
         </div>
       </div>
       <button onClick={()=>toggleField(t.id,kind==="wait"?"waiting":"someday")} style={{flexShrink:0,display:"flex",alignItems:"center",gap:4,fontSize:11,color:C.sub,background:"#fff",border:`1px solid ${C.line}`,borderRadius:7,padding:"4px 8px",cursor:"pointer"}}><RotateCcw size={12}/>ボードへ</button>
+      <button onClick={()=>handleDelete(t.id)} aria-label="削除" title="削除" style={{...miniBtn,flexShrink:0,color:C.sub}}><Trash2 size={12}/></button>
     </div>
   );
 

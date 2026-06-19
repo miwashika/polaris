@@ -100,4 +100,15 @@ export async function setField(taskId, listId, field, value) {
   if (!data.ok) throw new Error(data.error || 'setField失敗');
 }
 
+/**
+ * タスクを物理削除する
+ * @param {string} taskId
+ * @param {string} listId
+ */
+export async function deleteTask(taskId, listId) {
+  if (!HAS_GAS) return;
+  const data = await gasPost({ action: 'deleteTask', taskId, listId });
+  if (!data.ok) throw new Error(data.error || 'deleteTask失敗');
+}
+
 export { HAS_GAS };

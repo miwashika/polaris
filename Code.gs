@@ -62,11 +62,12 @@ function doPost(e) {
 
     const action = body.action || 'create';
     switch (action) {
-      case 'create':   return handleCreate_(body);
-      case 'setDue':   return handleSetDue_(body);
-      case 'complete': return handleComplete_(body);
-      case 'setField': return handleSetField_(body);
-      default:         return jsonOut_({ ok: false, error: '不明なaction: ' + action });
+      case 'create':     return handleCreate_(body);
+      case 'setDue':     return handleSetDue_(body);
+      case 'complete':   return handleComplete_(body);
+      case 'setField':   return handleSetField_(body);
+      case 'deleteTask': return handleDelete_(body);
+      default:           return jsonOut_({ ok: false, error: '不明なaction: ' + action });
     }
   } catch (err) {
     return jsonOut_({ ok: false, error: String(err) });
@@ -129,6 +130,13 @@ function handleComplete_(body) {
     Logger.log('ログ追記失敗: ' + logErr);
   }
 
+  return jsonOut_({ ok: true });
+}
+
+function handleDelete_(body) {
+  const { taskId, listId } = body;
+  if (!taskId || !listId) return jsonOut_({ ok: false, error: 'taskId/listId必須' });
+  Tasks.Tasks.remove(listId, taskId);
   return jsonOut_({ ok: true });
 }
 
