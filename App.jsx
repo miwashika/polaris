@@ -1,4 +1,12 @@
-import React, { useState, useMemo } from "react";
+import React, { useState, useMemo, useEffect, useCallback } from "react";
+import {
+  fetchTasks,
+  createTask,
+  setDue    as apiSetDue,
+  completeTask,
+  setField  as apiSetField,
+  HAS_GAS,
+} from "./api.js";
 import { Check, RotateCcw, Pin, Pause, Archive, Sun, ListChecks, X, Calendar, Star, Settings, Inbox } from "lucide-react";
 
 /**
@@ -26,7 +34,9 @@ const QUAD = {
 const CAT = {
   "クリニック": "#2D6CDF", "Minowa": "#6D5BD0", "家庭": "#1E9E8A",
   "還和": "#D9663E", "倖乃椛": "#C8517E", "翔子": "#B07A1E", "個人": "#6B7785",
+  "その他": "#9BA8B2",
 };
+const catColor = (cat) => CAT[cat] || "#9BA8B2";
 const TAGS = ["電話", "5分", "集中", "移動中", "PC"];
 const ALIGN = {
   on:   { label: "沿○", color: "#1C8C84", bg: "#EAF5F3" },
@@ -114,7 +124,12 @@ function TrendChart({ data }) {
 
 // ── メインコンポーネント ──────────────────────────────
 export default function App() {
-  const [tasks,    setTasks]    = useState(SEED);
+  const [tasks,    setTasks]    = useState(HAS_GAS ? [] : SEED);
+  const [loading,  setLoading]  = useState(HAS_GAS);
+  const [gasError, setGasError] = useState(null);
+  const [capture,  setCapture]  = useState("");
+  const [capturing,setCapturing]= useState(false);
+  const [captureErr,setCaptureErr]=useState(null);
   const [view,     setView]     = useState("focus");   // "focus" | "plan"
   const [subOpen,  setSubOpen]  = useState(false);
   const [subView,  setSubView]  = useState("quad");    // "quad"|"review"|"hold"|"polaris"
@@ -136,6 +151,22 @@ export default function App() {
     return { i,key:keyOf(d),dow:d.getDay(),wd:WD[d.getDay()],dom:d.getDate(),mon:d.getMonth()+1 };
   }),[]);
 
+  const loadTasks = useCallback(async()=>{
+    setLoading(true);
+    setGasError(null);
+    try {
+      const result = await fetchTasks();
+      if (result !== null) setTasks(result);
+      // null → GAS未接続、SEEDデータのまま
+    } catch(e) {
+      setGasError(e.message || 'データ取得に失敗しました');
+    } finally {
+      setLoading(false);
+    }
+  },[]);
+
+  useEffect(()=>{ if(HAS_GAS) loadTasks(); },[loadTasks]);
+
   // 計算関数
   const quadrantOf=(t)=>{ const d=daysUntil(t.due),u=d!==null&&d<=urgentDays; return t.important?(u?1:2):(u?3:4); };
   const approaching=(t)=>{ const d=daysUntil(t.due); return t.important===1&&d!==null&&d>urgentDays&&d<=urgentDays+3; };
@@ -148,15 +179,52 @@ export default function App() {
   const isActive=(t)=>!t.done&&!t.waiting&&!t.someday;
   const isAging =(t)=>isActive(t)&&t.due===null&&t.important===1&&ageDays(t.createdAt)>=AGING_DAYS;
 
-  // アクション
-  const setDue=(id,due)=>setTasks(ts=>ts.map(t=>t.id===id?{...t,due}:t));
-  const toggleDone=(id)=>setTasks(ts=>ts.map(t=>{
-    if(t.id!==id)return t;
-    if(t.done)return{...t,done:false,doneQuadrant:undefined,doneAt:undefined};
-    return{...t,done:true,doneQuadrant:quadrantOf(t),doneAt:keyOf(TODAY)};
-  }));
-  const toggleField=(id,field)=>setTasks(ts=>ts.map(t=>t.id===id?{...t,[field]:!t[field]}:t));
-  const setCommitted=(id,val)=>setTasks(ts=>ts.map(t=>t.id===id?{...t,committed:val}:t));
+  // アクション（楽観的更新 → バックグラウンドでAPI同期）
+  const setDue=async(id,due)=>{
+    const t=tasks.find(x=>x.id===id);
+    setTasks(ts=>ts.map(x=>x.id===id?{...x,due}:x));
+    if(t?.listId){ try{ await apiSetDue(t.id,t.listId,due); }catch(_){} }
+  };
+  const toggleDone=async(id)=>{
+    const t=tasks.find(x=>x.id===id);
+    if(!t) return;
+    if(t.done){
+      // 完了取り消し（ローカルのみ）
+      setTasks(ts=>ts.map(x=>x.id===id?{...x,done:false,doneQuadrant:undefined,doneAt:undefined}:x));
+      return;
+    }
+    const q=quadrantOf(t);
+    setTasks(ts=>ts.map(x=>x.id===id?{...x,done:true,doneQuadrant:q,doneAt:keyOf(TODAY)}:x));
+    if(t.listId){ try{ await completeTask(t.id,t.listId,q); }catch(_){} }
+  };
+  const toggleField=async(id,field)=>{
+    const t=tasks.find(x=>x.id===id);
+    if(!t) return;
+    const val=!t[field];
+    setTasks(ts=>ts.map(x=>x.id===id?{...x,[field]:val}:x));
+    if(t.listId){ try{ await apiSetField(t.id,t.listId,field,val); }catch(_){} }
+  };
+  const setCommitted=async(id,val)=>{
+    const t=tasks.find(x=>x.id===id);
+    setTasks(ts=>ts.map(x=>x.id===id?{...x,committed:val}:x));
+    if(t?.listId){ try{ await apiSetField(t.id,t.listId,'committed',val); }catch(_){} }
+  };
+
+  const handleCapture=async()=>{
+    const text=capture.trim();
+    if(!text||capturing) return;
+    setCapturing(true); setCaptureErr(null);
+    try {
+      const {task,spoken}=await createTask(text);
+      setTasks(ts=>[{...task,cat:task.category,important:task.importance,createdAt:task.created||''},...ts]);
+      setCapture('');
+      if(spoken) alert(spoken);
+    } catch(e){
+      setCaptureErr(e.message||'登録に失敗しました');
+    } finally {
+      setCapturing(false);
+    }
+  };
   const addPolaris=()=>{ const v=polarisInput.trim(); if(!v)return; setPolaris(p=>[...p,{id:Date.now(),text:v}]); setPolarisInput(""); };
   const delPolaris=(id)=>setPolaris(p=>p.filter(x=>x.id!==id));
   const place=(id,due)=>{ setDue(id,due); setSelected(null); };
@@ -386,6 +454,23 @@ export default function App() {
   const todayStr = `${keyOf(TODAY).slice(5).replace("-","/")}（${WD[TODAY.getDay()]}）`;
 
   // ── レンダー ─────────────────────────────────────────
+  if(loading) return (
+    <div style={{ minHeight:"100vh",background:C.paper,display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",gap:16,fontFamily:SANS }}>
+      <div style={{ width:40,height:40,borderRadius:"50%",border:`3px solid ${C.lineSoft}`,borderTopColor:C.q2,animation:"spin 0.8s linear infinite" }}/>
+      <div style={{ fontSize:14,color:C.sub }}>Googleタスクを読み込み中…</div>
+      <style>{`@keyframes spin{to{transform:rotate(360deg)}}`}</style>
+    </div>
+  );
+
+  if(gasError) return (
+    <div style={{ minHeight:"100vh",background:C.paper,display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",gap:16,fontFamily:SANS,padding:24 }}>
+      <div style={{ fontSize:32 }}>⚠️</div>
+      <div style={{ fontSize:15,fontWeight:700,color:C.ink }}>データ取得に失敗しました</div>
+      <div style={{ fontSize:13,color:C.sub,maxWidth:360,textAlign:"center",lineHeight:1.6 }}>{gasError}</div>
+      <button onClick={loadTasks} style={{ fontSize:14,fontWeight:700,color:"#fff",background:C.q2,border:"none",borderRadius:11,padding:"11px 28px",cursor:"pointer" }}>再試行</button>
+    </div>
+  );
+
   return (
     <div style={{ minHeight:"100vh", background:C.paper, fontFamily:SANS, color:C.ink }}>
       <style>{`
@@ -416,6 +501,21 @@ export default function App() {
       {/* ── Focus ビュー ── */}
       {view==="focus"&&(
         <div style={{ maxWidth:520,margin:"0 auto",padding:"28px 18px 60px",display:"flex",flexDirection:"column",gap:20 }}>
+          {/* キャプチャ入力 */}
+          {HAS_GAS&&(
+            <div style={{ background:"#fff",borderRadius:14,padding:"14px 16px",border:`1px solid ${C.line}` }}>
+              <div style={{ display:"flex",gap:8 }}>
+                <input value={capture} onChange={e=>{setCapture(e.target.value);setCaptureErr(null);}}
+                  placeholder="今思いついたことを放り込む…" disabled={capturing}
+                  style={{ flex:1,fontSize:14,color:C.ink,border:`1px solid ${C.line}`,borderRadius:10,padding:"10px 13px",background:"#fff",outline:"none",fontFamily:SANS }}/>
+                <button onClick={handleCapture} disabled={capturing||!capture.trim()}
+                  style={{ fontSize:13,fontWeight:700,color:"#fff",background:(capturing||!capture.trim())?C.sub:C.q2,border:"none",borderRadius:10,padding:"0 18px",cursor:capturing?"wait":"pointer",whiteSpace:"nowrap",transition:"background .15s" }}>
+                  {capturing?"分類中…":"追加"}
+                </button>
+              </div>
+              {captureErr&&<div style={{ fontSize:12,color:C.q1,marginTop:6 }}>{captureErr}</div>}
+            </div>
+          )}
           {/* 今日の一手 Hero */}
           {todayPick?<FocusCard t={todayPick.t} hero/>:(
             <div style={{ background:"#fff",borderRadius:16,padding:"28px 20px",textAlign:"center",border:`1px solid ${C.line}` }}>
@@ -501,7 +601,7 @@ export default function App() {
             </section>
           )}
 
-          <div style={{ textAlign:"center",fontSize:11,color:C.sub }}>サンプルデータ · 実データ未接続</div>
+          <div style={{ textAlign:"center",fontSize:11,color:C.sub }}>{HAS_GAS?"Googleタスク接続済み":"GAS未接続 · サンプルデータ表示中"}</div>
         </div>
       )}
 
