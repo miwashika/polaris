@@ -4,6 +4,13 @@
 
 ---
 
+## [0.5.8] - 2026-06-20 · Beta
+
+### Fixed
+- **SwipeRow iOS長押し誤作動を根本修正** — 15pxの水平移動閾値を設けるまでUI一切動かさない。`|deltaY| > |deltaX|` で即座にスワイプキャンセル（縦スクロール優先）。`WebkitTouchCallout:"none"` / `WebkitUserSelect:"none"` / `userSelect:"none"` で長押しメニューをブロック。`dragLock` ref（HTML5 DnD依存、iOS非対応）を完全削除し、単一の `st` ref（`x0/y0/isH/wasOpen/cur/active`）に統一
+
+---
+
 ## [0.5.7] - 2026-06-20 · Beta
 
 ### Fixed

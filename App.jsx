@@ -128,42 +128,58 @@ function TrendChart({ data }) {
 }
 
 // ── スワイプ行コンポーネント ───────────────────────────
+const SWIPE_THRESHOLD = 15; // この距離を超えるまでUIを動かさない
 function SwipeRow({ rowId, openId, setOpenId, onDelete, radius=12, actionWidth=72, children }) {
   const [offset, setOffset] = React.useState(0);
   const [live,   setLive]   = React.useState(false);
-  const drag     = React.useRef({ x0:0, y0:0, isH:null, wasOpen:false, cur:0 });
-  const dragLock = React.useRef(false);
+  // isH: null=未判定 / true=水平 / false=垂直（キャンセル済み）
+  const st = React.useRef({ x0:0, y0:0, isH:null, wasOpen:false, cur:0, active:false });
   const isOpen = openId === rowId;
 
   React.useEffect(()=>{ if(!isOpen && !live) setOffset(0); },[isOpen, live]);
 
   const ts=(e)=>{
-    if(dragLock.current) return;
     const t=e.touches[0];
-    const start=isOpen?-actionWidth:0;
-    drag.current={x0:t.clientX,y0:t.clientY,isH:null,wasOpen:isOpen,cur:start};
-    setOffset(start); setLive(true);
-  };
-  const tm=(e)=>{
-    if(dragLock.current){setLive(false);return;}
-    const r=drag.current, t=e.touches[0];
-    const dx=t.clientX-r.x0, dy=t.clientY-r.y0;
-    if(r.isH===null){
-      if(Math.abs(dx)<5&&Math.abs(dy)<5) return;
-      r.isH=Math.abs(dx)>Math.abs(dy);
-    }
-    if(!r.isH){setLive(false);return;}
-    const next=Math.min(4,Math.max(-actionWidth,(r.wasOpen?-actionWidth:0)+dx));
-    r.cur=next; setOffset(next);
-  };
-  const te=()=>{
-    const r=drag.current; setLive(false);
-    if(!r.isH) return;
-    if(r.cur<-actionWidth/2){setOpenId(rowId); setOffset(-actionWidth);}
-    else{if(isOpen)setOpenId(null); setOffset(0);}
+    st.current={ x0:t.clientX, y0:t.clientY, isH:null, wasOpen:isOpen, cur:isOpen?-actionWidth:0, active:true };
+    // まだUIは動かさない（threshold待ち）
   };
 
-  const shown=live?offset:(isOpen?-actionWidth:0);
+  const tm=(e)=>{
+    const r=st.current;
+    if(!r.active) return;
+    const t=e.touches[0];
+    const dx=t.clientX-r.x0, dy=t.clientY-r.y0;
+    const absDx=Math.abs(dx), absDy=Math.abs(dy);
+
+    // ① 縦スクロール優先なら即キャンセル
+    if(r.isH===null && absDy>absDx){ r.isH=false; r.active=false; setLive(false); setOffset(isOpen?-actionWidth:0); return; }
+
+    // ② 水平と判定されるまで15px待つ
+    if(r.isH===null){
+      if(absDx < SWIPE_THRESHOLD) return; // threshold未満はUI変化なし
+      r.isH=true;
+      setLive(true);
+    }
+
+    if(!r.isH) return;
+
+    // ③ threshold超え → スライド開始
+    const base = r.wasOpen ? -actionWidth : 0;
+    const next = Math.min(4, Math.max(-actionWidth, base + dx));
+    r.cur = next;
+    setOffset(next);
+  };
+
+  const te=()=>{
+    const r=st.current;
+    r.active=false;
+    setLive(false);
+    if(!r.isH) return;
+    if(r.cur < -actionWidth/2){ setOpenId(rowId); setOffset(-actionWidth); }
+    else{ if(isOpen) setOpenId(null); setOffset(0); }
+  };
+
+  const shown = live ? offset : (isOpen ? -actionWidth : 0);
   return(
     <div style={{position:'relative',overflow:'hidden',borderRadius:radius}}>
       <div style={{position:'absolute',inset:0,display:'flex',justifyContent:'flex-end'}}>
@@ -174,10 +190,16 @@ function SwipeRow({ rowId, openId, setOpenId, onDelete, radius=12, actionWidth=7
       </div>
       <div
         onTouchStart={ts} onTouchMove={tm} onTouchEnd={te}
-        onDragStart={()=>{ dragLock.current=true; setOffset(0); setLive(false); }}
-        onDragEnd={()=>{ dragLock.current=false; }}
         onClickCapture={(e)=>{if(isOpen){e.stopPropagation();setOpenId(null);}}}
-        style={{transform:`translateX(${shown}px)`,transition:live?'none':'transform 0.22s cubic-bezier(0.25,0.46,0.45,0.94)',touchAction:'pan-y',position:'relative',zIndex:1,willChange:'transform'}}
+        style={{
+          transform:`translateX(${shown}px)`,
+          transition:live?'none':'transform 0.22s cubic-bezier(0.25,0.46,0.45,0.94)',
+          touchAction:'pan-y',
+          WebkitTouchCallout:'none',
+          WebkitUserSelect:'none',
+          userSelect:'none',
+          position:'relative',zIndex:1,willChange:'transform',
+        }}
       >{children}</div>
     </div>
   );
