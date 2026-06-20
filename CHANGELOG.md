@@ -4,6 +4,23 @@
 
 ---
 
+## [0.5.12] - 2026-06-21 · Beta
+
+### Added
+- **編集モーダルに「領域の直接指定」機能を追加**
+  - 2×2の4色ボタン（セグメントコントロール）で第1〜第4を即時選択
+  - 選択と同時にモーダルヘッダーの「リアルタイム領域プレビュー」へ反映
+  - 「× 自動に戻す」ボタンで手動設定を解除し、重要度×期日の自動計算に復帰
+  - 同じボタンを再タップすると選択解除（トグル）
+- **`manualQuadrant` フィールドをデータ構造に追加**（Code.gs / api.js / App.jsx）
+  - `parseMeta_` / `buildNotes_` / `parseTask_` に `manualQuadrant` のパース・シリアライズを実装
+  - `handleUpdateTask_` にて ① `manualQuadrant` 指定あり → 優先採用、② なし → 自動計算 の判定ロジックを実装
+  - Googleタスクの `notes` フィールドに `manualQuadrant:N` 形式で永続化（null 時は省略）
+  - `quadrantOf(t)` が `t.manualQuadrant` を最優先で返すよう更新 → マトリクスHMとリストに即反映
+  - 楽観的更新・API同期レスポンス両方で `manualQuadrant` を維持
+
+---
+
 ## [0.5.11] - 2026-06-21 · Beta
 
 ### Changed

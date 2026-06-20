@@ -264,7 +264,7 @@ export default function App() {
   const [insightOpen,   setInsightOpen]   = useState(false);
   const [insightLoading,setInsightLoading]= useState(false);
   const [editTask,      setEditTask]      = useState(null);
-  const [editForm,      setEditForm]      = useState({title:'',important:1,due:'',span:'1ヶ月'});
+  const [editForm,      setEditForm]      = useState({title:'',important:1,due:'',span:'1ヶ月',manualQuadrant:null});
 
   // コヴィーマトリクス: Planビュー内の各象限リストへのスクロール用 ref
   const quadRef1 = React.useRef(null);
@@ -332,7 +332,8 @@ export default function App() {
   useEffect(()=>{ runCalendarFetch(false); },[]);
 
   // 計算関数
-  const quadrantOf=(t)=>{ const d=daysUntil(t.due),u=d!==null&&d<=urgentDays; return t.important?(u?1:2):(u?3:4); };
+  // ① manualQuadrant が指定されていればそれを優先、② なければ重要度×期日で自動計算
+  const quadrantOf=(t)=>{ if(t.manualQuadrant&&[1,2,3,4].includes(t.manualQuadrant)) return t.manualQuadrant; const d=daysUntil(t.due),u=d!==null&&d<=urgentDays; return t.important?(u?1:2):(u?3:4); };
   const approaching=(t)=>{ const d=daysUntil(t.due); return t.important===1&&d!==null&&d>urgentDays&&d<=urgentDays+3; };
   const relText=(d)=>d===null?"未定":d<0?`${-d}日超過`:d===0?"今日":d===1?"明日":`${d}日後`;
   const sortDue=(a,b)=>{ const da=daysUntil(a.due),db=daysUntil(b.due); if(da===null&&db===null)return 0; if(da===null)return 1; if(db===null)return-1; return da-db; };
@@ -396,18 +397,19 @@ export default function App() {
     if(t?.listId){ try{ await apiDeleteTask(t.id,t.listId); }catch(_){} }
   };
 
-  const openEdit=(t)=>{ setEditForm({title:t.title,important:t.important??1,due:t.due||'',span:t.span||'1ヶ月'}); setEditTask(t); };
+  const openEdit=(t)=>{ setEditForm({title:t.title,important:t.important??1,due:t.due||'',span:t.span||'1ヶ月',manualQuadrant:t.manualQuadrant??null}); setEditTask(t); };
   const saveEdit=async()=>{
     if(!editTask) return;
-    const {title,important,due,span}=editForm;
-    // 楽観的更新
-    setTasks(ts=>ts.map(t=>t.id===editTask.id?{...t,title,important,due:due||null,span}:t));
+    const {title,important,due,span,manualQuadrant}=editForm;
+    const mq=manualQuadrant??null;
+    // 楽観的更新（manualQuadrant も即反映）
+    setTasks(ts=>ts.map(t=>t.id===editTask.id?{...t,title,important,due:due||null,span,manualQuadrant:mq}:t));
     setEditTask(null);
     // バックグラウンドAPI同期
     if(editTask.listId){
       try{
-        const r=await apiUpdateTask({taskId:editTask.id,listId:editTask.listId,title,importance:important,due:due||null,span,category:editTask.cat});
-        if(r?.task) setTasks(ts=>ts.map(t=>t.id===editTask.id?{...r.task,cat:r.task.category,important:r.task.importance,createdAt:r.task.created||''}:t));
+        const r=await apiUpdateTask({taskId:editTask.id,listId:editTask.listId,title,importance:important,due:due||null,span,category:editTask.cat,manualQuadrant:mq});
+        if(r?.task) setTasks(ts=>ts.map(t=>t.id===editTask.id?{...r.task,cat:r.task.category,important:r.task.importance,createdAt:r.task.created||'',manualQuadrant:r.task.manualQuadrant??null}:t));
       }catch(_){}
     }
   };
@@ -1284,7 +1286,8 @@ export default function App() {
 
       {/* ── タスク編集モーダル ── */}
       {editTask&&(()=>{
-        const previewQ=editForm.important===1?(daysUntil(editForm.due||null)!==null&&daysUntil(editForm.due||null)<=urgentDays?1:2):(daysUntil(editForm.due||null)!==null&&daysUntil(editForm.due||null)<=urgentDays?3:4);
+        const _autoQ=editForm.important===1?(daysUntil(editForm.due||null)!==null&&daysUntil(editForm.due||null)<=urgentDays?1:2):(daysUntil(editForm.due||null)!==null&&daysUntil(editForm.due||null)<=urgentDays?3:4);
+        const previewQ=(editForm.manualQuadrant&&[1,2,3,4].includes(editForm.manualQuadrant))?editForm.manualQuadrant:_autoQ;
         const previewMeta=QUAD[previewQ];
         return(
           <div onClick={()=>setEditTask(null)} style={{ position:"fixed",inset:0,background:"#19232d70",display:"grid",placeItems:"center",padding:18,zIndex:60 }}>
@@ -1335,6 +1338,34 @@ export default function App() {
                       </button>
                     ))}
                   </div>
+                </div>
+                {/* 領域の直接指定 */}
+                <div>
+                  <div style={{ display:"flex",alignItems:"center",gap:8,marginBottom:6 }}>
+                    <span style={{ fontSize:11,fontWeight:700,color:C.sub }}>領域の直接指定</span>
+                    {editForm.manualQuadrant&&(
+                      <button onClick={()=>setEditForm(f=>({...f,manualQuadrant:null}))}
+                        style={{ fontSize:10,color:C.sub,background:"none",border:`1px solid ${C.line}`,borderRadius:5,padding:"2px 7px",cursor:"pointer" }}>
+                        × 自動に戻す
+                      </button>
+                    )}
+                  </div>
+                  <div style={{ display:"grid",gridTemplateColumns:"1fr 1fr",gap:6 }}>
+                    {[1,2,3,4].map(n=>{
+                      const m=QUAD[n];
+                      const sel=editForm.manualQuadrant===n;
+                      return(
+                        <button key={n}
+                          onClick={()=>setEditForm(f=>({...f,manualQuadrant:f.manualQuadrant===n?null:n}))}
+                          style={{ display:"flex",alignItems:"center",gap:6,fontSize:12,fontWeight:600,padding:"7px 10px",borderRadius:9,border:`1.5px solid ${sel?m.color:C.line}`,background:sel?`${m.color}16`:"#fff",color:sel?m.color:C.sub,cursor:"pointer",transition:"all .12s",textAlign:"left" }}>
+                          <span style={{ width:8,height:8,borderRadius:2,background:m.color,flexShrink:0 }}/>
+                          <span>{m.label}</span>
+                          <span style={{ fontSize:10,fontWeight:400,opacity:.8 }}>{m.name}</span>
+                        </button>
+                      );
+                    })}
+                  </div>
+                  {!editForm.manualQuadrant&&<div style={{ fontSize:10,color:C.sub,marginTop:4 }}>未指定 — 重要度×期日で自動計算</div>}
                 </div>
                 {/* ステータス操作 */}
                 <div>

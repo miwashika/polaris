@@ -171,12 +171,21 @@ function handleUpdateTask_(body) {
   const newDue        = (due        !== undefined) ? (due || null)         : (existing.due ? existing.due.slice(0, 10) : null);
   const newSpan       = (span       !== undefined) ? span                  : (meta.span || '1ヶ月');
 
-  const quad        = calcQuadrantFromSpan_(newImportance, newDue, null);
-  existing.title    = '[第' + quad + '] ' + newTitle;
-  existing.due      = newDue ? newDue + 'T00:00:00.000Z' : null;
-  meta.importance   = newImportance;
-  meta.span         = newSpan;
-  existing.notes    = buildNotes_(meta.humanNotes, meta);
+  // manualQuadrant: 明示的に送られてきた場合はその値、undefined なら既存値を保持
+  const sentMq = body.manualQuadrant;
+  const newManualQuadrant = (sentMq !== undefined)
+    ? ([1,2,3,4].includes(Number(sentMq)) ? Number(sentMq) : null)
+    : (meta.manualQuadrant || null);
+
+  // ① manualQuadrant が指定されていれば優先、② なければ自動計算
+  const quad = newManualQuadrant != null ? newManualQuadrant : calcQuadrantFromSpan_(newImportance, newDue, null);
+
+  existing.title        = '[第' + quad + '] ' + newTitle;
+  existing.due          = newDue ? newDue + 'T00:00:00.000Z' : null;
+  meta.importance       = newImportance;
+  meta.span             = newSpan;
+  meta.manualQuadrant   = newManualQuadrant;
+  existing.notes        = buildNotes_(meta.humanNotes, meta);
 
   const updated  = Tasks.Tasks.update(existing, listId, taskId);
   const cat      = category || LIST_TO_CAT[(() => {
@@ -186,20 +195,21 @@ function handleUpdateTask_(body) {
   })()] || meta.category || 'その他';
 
   return jsonOut_({ ok: true, task: {
-    id:         updated.id,
-    listId:     listId,
-    category:   cat,
-    title:      newTitle,
-    rawTitle:   updated.title,
-    due:        newDue,
-    importance: newImportance,
-    span:       newSpan,
-    tags:       meta.tags       || [],
-    created:    meta.created    || '',
-    committed:  !!meta.committed,
-    waiting:    false,
-    someday:    false,
-    notes:      meta.humanNotes || '',
+    id:             updated.id,
+    listId:         listId,
+    category:       cat,
+    title:          newTitle,
+    rawTitle:       updated.title,
+    due:            newDue,
+    importance:     newImportance,
+    span:           newSpan,
+    tags:           meta.tags            || [],
+    created:        meta.created         || '',
+    committed:      !!meta.committed,
+    waiting:        false,
+    someday:        false,
+    notes:          meta.humanNotes      || '',
+    manualQuadrant: newManualQuadrant,
   }});
 }
 
@@ -350,21 +360,22 @@ function parseTask_(item, listId, listName) {
   const due       = item.due ? item.due.slice(0, 10) : null;
 
   return {
-    id:        item.id,
-    listId:    listId,
-    listName:  listName,
-    category:  LIST_TO_CAT[listName] || meta.category || 'その他',
-    title:     rawTitle,
-    rawTitle:  item.title || '',
-    due:       due,
-    importance: Number(meta.importance !== undefined ? meta.importance : 1),
-    span:      meta.span       || '1ヶ月',
-    tags:      meta.tags       || [],
-    created:   meta.created    || '',
-    committed: !!meta.committed,
-    waiting:   listName === WAITING_LIST,
-    someday:   listName === SOMEDAY_LIST,
-    notes:     meta.humanNotes || '',
+    id:             item.id,
+    listId:         listId,
+    listName:       listName,
+    category:       LIST_TO_CAT[listName] || meta.category || 'その他',
+    title:          rawTitle,
+    rawTitle:       item.title || '',
+    due:            due,
+    importance:     Number(meta.importance !== undefined ? meta.importance : 1),
+    span:           meta.span            || '1ヶ月',
+    tags:           meta.tags            || [],
+    created:        meta.created         || '',
+    committed:      !!meta.committed,
+    waiting:        listName === WAITING_LIST,
+    someday:        listName === SOMEDAY_LIST,
+    notes:          meta.humanNotes      || '',
+    manualQuadrant: meta.manualQuadrant  || null,
   };
 }
 
@@ -388,6 +399,9 @@ function parseMeta_(notes) {
       result.importance = Number(v);
     } else if (k === 'committed' || k === 'waiting' || k === 'someday') {
       result[k] = v === 'true';
+    } else if (k === 'manualQuadrant') {
+      const n = Number(v);
+      result.manualQuadrant = [1,2,3,4].includes(n) ? n : null;
     } else {
       result[k] = v;
     }
@@ -403,6 +417,10 @@ function buildNotes_(humanNotes, meta) {
     'created:'    + (meta.created || Utilities.formatDate(new Date(),'Asia/Tokyo','yyyy-MM-dd')),
     'committed:'  + !!meta.committed,
   ];
+  // manualQuadrant が有効値の場合のみ保存（nullは省略してコンパクトに保つ）
+  if (meta.manualQuadrant && [1,2,3,4].includes(Number(meta.manualQuadrant))) {
+    parts.push('manualQuadrant:' + Number(meta.manualQuadrant));
+  }
   const h = (humanNotes || '').trim();
   return h ? h + '\n---\n' + parts.join(' ') : '---\n' + parts.join(' ');
 }

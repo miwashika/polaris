@@ -115,9 +115,9 @@ export async function deleteTask(taskId, listId) {
  * タスクの属性を上書き更新する
  * @param {{ taskId, listId, title, due, importance, span, category }} params
  */
-export async function updateTask({ taskId, listId, title, due, importance, span, category }) {
+export async function updateTask({ taskId, listId, title, due, importance, span, category, manualQuadrant }) {
   if (!HAS_GAS) return; // ローカルのみ更新（楽観的）
-  const data = await gasPost({ action: 'updateTask', taskId, listId, title, due: due || null, importance, span, category });
+  const data = await gasPost({ action: 'updateTask', taskId, listId, title, due: due || null, importance, span, category, manualQuadrant: manualQuadrant ?? null });
   if (!data.ok) throw new Error(data.error || 'updateTask失敗');
   return { task: data.task };
 }
