@@ -200,7 +200,7 @@ export default function App() {
   const [checking,   setChecking]   = useState(false);
   const [checkErr,   setCheckErr]   = useState(null);
   const [openSwipeId,   setOpenSwipeId]   = useState(null);
-  const [calSuggestions,setCalSuggestions]= useState([]);
+  const [calSuggestions,setCalSuggestions]= useState(()=>{ try{return JSON.parse(localStorage.getItem('polaris_ai_suggestions')||'[]');}catch{return[];} });
   const [insightOpen,   setInsightOpen]   = useState(false);
   const [insightLoading,setInsightLoading]= useState(false);
 
@@ -225,17 +225,25 @@ export default function App() {
 
   useEffect(()=>{ if(HAS_GAS) loadTasks(); },[loadTasks]);
 
-  useEffect(()=>{
-    if(!HAS_GAS||polaris.length===0) return;
+  // calSuggestions が変わるたびにlocalStorageへ永続化
+  useEffect(()=>{ localStorage.setItem('polaris_ai_suggestions',JSON.stringify(calSuggestions)); },[calSuggestions]);
+
+  // カレンダー提案フェッチ（force=true で日付制限を無視）
+  const runCalendarFetch=useCallback((force=false)=>{
+    if(!HAS_GAS||insightLoading) return;
     const todayKey=keyOf(TODAY);
-    if(localStorage.getItem('polaris_insight_date')===todayKey) return;
+    if(!force&&localStorage.getItem('polaris_insight_date')===todayKey) return;
     setInsightLoading(true);
     generateCalendarSuggestions(polaris.map(p=>p.text))
       .then(list=>{ if(list.length>0){setCalSuggestions(list);setInsightOpen(true);} localStorage.setItem('polaris_insight_date',todayKey); })
       .catch(()=>{})
       .finally(()=>setInsightLoading(false));
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  },[]);
+  },[polaris,insightLoading]);
+
+  // 初回マウント時に1日1回の自動フェッチ
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  useEffect(()=>{ runCalendarFetch(false); },[]);
 
   // 計算関数
   const quadrantOf=(t)=>{ const d=daysUntil(t.due),u=d!==null&&d<=urgentDays; return t.important?(u?1:2):(u?3:4); };
@@ -976,6 +984,14 @@ export default function App() {
                       <input value={polarisInput} onChange={(e)=>setPolarisInput(e.target.value)} onKeyDown={(e)=>{if(e.key==="Enter")addPolaris();}} placeholder="例：予防で患者の一生を支える" style={{ flex:1,minWidth:0,fontSize:13,color:C.ink,border:`1px solid ${C.line}`,borderRadius:9,padding:"9px 11px",background:"#fff" }}/>
                       <button onClick={addPolaris} style={{ fontSize:13,fontWeight:700,color:"#fff",background:C.q2,border:"none",borderRadius:9,padding:"0 16px",cursor:"pointer" }}>追加</button>
                     </div>
+                    {HAS_GAS&&(
+                      <div style={{ marginTop:16,paddingTop:14,borderTop:`1px solid ${C.lineSoft}` }}>
+                        <button onClick={()=>runCalendarFetch(true)} disabled={insightLoading} style={{ width:"100%",display:"flex",alignItems:"center",justifyContent:"center",gap:6,fontSize:13,fontWeight:600,color:insightLoading?C.sub:C.ink,background:C.lineSoft,border:`1px solid ${C.line}`,borderRadius:10,padding:"10px",cursor:insightLoading?"default":"pointer" }}>
+                          {insightLoading?"🔄 取得中…":"🔄 AIカレンダー提案を手動取得"}
+                        </button>
+                        {calSuggestions.length>0&&<div style={{ fontSize:11,color:C.sub,textAlign:"center",marginTop:6 }}>現在 {calSuggestions.length} 件の提案がキャッシュ済み</div>}
+                      </div>
+                    )}
                   </section>
                   <section style={{ flex:"1 1 300px",minWidth:270,background:"#fff",border:`1px solid ${C.line}`,borderRadius:12,padding:16 }}>
                     <h2 style={{ fontSize:15,fontWeight:800,margin:"0 0 4px" }}>方向性との整合チェック</h2>

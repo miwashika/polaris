@@ -4,6 +4,15 @@
 
 ---
 
+## [0.5.5] - 2026-06-20 · Beta
+
+### Changed
+- **AIカレンダー提案の永続化** — 取得した提案を `localStorage['polaris_ai_suggestions']` に保存。リロード・再訪問後も「追加」または「×スキップ」するまで「💡 AIからの提案」セクションに残り続ける。`calSuggestions` state の変化を useEffect で監視し自動同期
+- **手動フェッチボタンを裏メニューに追加** — 「Polaris」テキストタップ → 北極星の設定モーダル最下部に「🔄 AIカレンダー提案を手動取得」ボタンを追加。1日1回制限を無視して強制フェッチし、localStorage キャッシュを上書き
+- **フェッチロジックを `runCalendarFetch(force)` に統一** — 自動フェッチ（`force=false`）と手動フェッチ（`force=true`）を同一関数で管理。`force=false` は `polaris_insight_date` が今日の日付と一致する場合スキップ
+
+---
+
 ## [0.5.4] - 2026-06-20 · Beta
 
 ### Added
