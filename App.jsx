@@ -676,13 +676,6 @@ export default function App() {
       {view==="plan"&&(
         <div style={{ padding:"20px 18px 40px" }}>
           {banner(diagBoard,"診断")}
-          {/* 方向性チェック */}
-          <div style={{ display:"flex",alignItems:"center",justifyContent:"flex-end",gap:8,marginTop:-6,marginBottom:14 }}>
-            {checkErr&&<span style={{ fontSize:12,color:C.q1 }}>{checkErr}</span>}
-            <button onClick={runAlignment} disabled={checking} style={{ display:"flex",alignItems:"center",gap:5,fontSize:12,fontWeight:600,color:checking?C.sub:C.q2,background:"#fff",border:`1px solid ${C.line}`,borderRadius:9,padding:"6px 13px",cursor:checking?"default":"pointer",flexShrink:0 }}>
-              🧭 {checking?"判定中…":"方向性チェック"}
-            </button>
-          </div>
           {/* フィルタ行 */}
           <div style={{ display:"flex",alignItems:"center",justifyContent:"space-between",flexWrap:"wrap",gap:10,marginBottom:10 }}>
             <div style={{ display:"flex",alignItems:"center",gap:6,flexWrap:"wrap" }}>
