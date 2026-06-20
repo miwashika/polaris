@@ -260,10 +260,18 @@ export default function App() {
   const [checkErr,   setCheckErr]   = useState(null);
   const [openSwipeId,   setOpenSwipeId]   = useState(null);
   const [calSuggestions,setCalSuggestions]= useState(()=>{ try{return JSON.parse(localStorage.getItem('polaris_ai_suggestions')||'[]');}catch{return[];} });
+  const [calTimeframe,  setCalTimeframe]  = useState(()=>localStorage.getItem('polaris_calendar_timeframe')||'2w');
   const [insightOpen,   setInsightOpen]   = useState(false);
   const [insightLoading,setInsightLoading]= useState(false);
   const [editTask,      setEditTask]      = useState(null);
   const [editForm,      setEditForm]      = useState({title:'',important:1,due:'',span:'1ヶ月'});
+
+  // コヴィーマトリクス: 各象限リストへのスクロール用 ref（第1〜第4）
+  const quadRef1 = React.useRef(null);
+  const quadRef2 = React.useRef(null);
+  const quadRef3 = React.useRef(null);
+  const quadRef4 = React.useRef(null);
+  const quadRefs = [quadRef1, quadRef2, quadRef3, quadRef4];
 
   const week = useMemo(()=>Array.from({length:7},(_,i)=>{
     const d=addDays(TODAY,i);
@@ -306,12 +314,12 @@ export default function App() {
     const todayKey=keyOf(TODAY);
     if(!force&&localStorage.getItem('polaris_insight_date')===todayKey) return;
     setInsightLoading(true);
-    generateCalendarSuggestions(polaris.map(p=>p.text))
+    generateCalendarSuggestions(polaris.map(p=>p.text), calTimeframe)
       .then(list=>{ if(list.length>0){setCalSuggestions(list);setInsightOpen(true);} localStorage.setItem('polaris_insight_date',todayKey); })
       .catch(()=>{})
       .finally(()=>setInsightLoading(false));
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  },[polaris,insightLoading]);
+  },[polaris,insightLoading,calTimeframe]);
 
   // 初回マウント時に1日1回の自動フェッチ
   // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -825,6 +833,17 @@ export default function App() {
           {/* 同期エリア */}
           <div style={{ border:`1px solid ${C.lineSoft}`,borderRadius:12,padding:"12px 14px",display:"flex",flexDirection:"column",gap:8 }}>
             <div style={{ display:"flex",gap:8 }}>
+              <select
+                value={calTimeframe}
+                onChange={e=>{ setCalTimeframe(e.target.value); localStorage.setItem('polaris_calendar_timeframe',e.target.value); }}
+                style={{ fontSize:11,color:C.sub,background:"transparent",border:`1px solid ${C.line}`,borderRadius:9,padding:"0 6px",cursor:"pointer",flexShrink:0 }}
+              >
+                <option value="2w">2週間先</option>
+                <option value="1m">1ヶ月先</option>
+                <option value="3m">3ヶ月先</option>
+                <option value="6m">半年先</option>
+                <option value="1y">1年先</option>
+              </select>
               <button
                 onClick={()=>runCalendarFetch(true)}
                 disabled={!HAS_GAS||insightLoading}
@@ -979,19 +998,56 @@ export default function App() {
             <div style={{ padding:16,flex:1 }}>
               {/* 領域別 */}
               {subView==="quad"&&(
-                <div style={{ display:"flex",gap:12,flexWrap:"wrap" }}>
-                  {[1,2,3,4].map(n=>{
+                <div>
+                  {/* ── コヴィーマトリクス × ヒートマップ ── */}
+                  <div style={{ display:"grid",gridTemplateColumns:"1fr 1fr",border:`2px solid ${C.line}`,borderRadius:14,overflow:"hidden",marginBottom:20 }}>
+                    {[1,2,3,4].map((n,i)=>{
+                      const items=tasks.filter(t=>isActive(t)&&visible(t)&&quadrantOf(t)===n);
+                      const meta=QUAD[n];
+                      const bgMap={1:"#FDF0EF",2:"#EAF5F3",3:"#FDF7EE",4:"#F4F6F8"};
+                      const isRight=i%2===1, isTop=i<2;
+                      return(
+                        <div key={n}
+                          onClick={()=>quadRefs[n-1].current?.scrollIntoView({behavior:"smooth",block:"start"})}
+                          style={{ padding:"10px 12px",cursor:"pointer",background:bgMap[n],borderRight:isRight?"none":`1px solid ${C.line}`,borderBottom:isTop?`1px solid ${C.line}`:"none",minHeight:72,transition:"opacity .15s" }}
+                          onMouseEnter={e=>e.currentTarget.style.opacity=".85"}
+                          onMouseLeave={e=>e.currentTarget.style.opacity="1"}
+                        >
+                          <div style={{ display:"flex",alignItems:"baseline",gap:5,marginBottom:7 }}>
+                            <span style={{ fontFamily:MONO,fontSize:11,fontWeight:800,color:meta.color }}>{meta.label}</span>
+                            <span style={{ fontSize:10,color:C.sub,lineHeight:1 }}>{meta.name}</span>
+                            <span style={{ fontFamily:MONO,fontSize:11,fontWeight:700,color:meta.color,marginLeft:"auto" }}>{items.length}</span>
+                          </div>
+                          <div style={{ display:"flex",flexWrap:"wrap",gap:3 }}>
+                            {items.length===0
+                              ? <div style={{ width:10,height:10,borderRadius:2,background:C.line }}/>
+                              : items.map(t=>(
+                                  <div key={t.id} title={t.title} style={{ width:10,height:10,borderRadius:2,background:meta.color,opacity:t.important===1?1:0.45 }}/>
+                                ))
+                            }
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                  {/* ── 軸ラベル ── */}
+                  <div style={{ display:"grid",gridTemplateColumns:"1fr 1fr",textAlign:"center",marginBottom:20,gap:0 }}>
+                    <div style={{ fontSize:10,color:C.sub,paddingBottom:2,borderBottom:`1px dashed ${C.line}` }}>← 緊急</div>
+                    <div style={{ fontSize:10,color:C.sub,paddingBottom:2,borderBottom:`1px dashed ${C.line}` }}>緊急でない →</div>
+                  </div>
+                  {/* ── 領域別タスクリスト（常時表示） ── */}
+                  {[1,2,3,4].map((n,i)=>{
                     const items=tasks.filter(t=>isActive(t)&&visible(t)&&quadrantOf(t)===n).sort((a,b)=>{const da=daysUntil(a.due),db=daysUntil(b.due);if(da===null&&db===null)return 0;if(da===null)return 1;if(db===null)return -1;return da-db;});
                     const meta=QUAD[n];
                     return(
-                      <div key={n} style={{ flex:"1 1 300px",minWidth:260,background:"#fff",border:`1px solid ${C.line}`,borderTop:`3px solid ${meta.color}`,borderRadius:12,padding:12 }}>
-                        <div style={{ display:"flex",alignItems:"center",gap:7,marginBottom:10 }}>
+                      <div key={n} style={{ marginBottom:20 }}>
+                        <div ref={quadRefs[i]} style={{ display:"flex",alignItems:"center",gap:7,marginBottom:10,paddingTop:8,scrollMarginTop:64,borderLeft:`3px solid ${meta.color}`,paddingLeft:10 }}>
                           <span style={{ fontFamily:MONO,fontSize:12,fontWeight:800,color:meta.color }}>{meta.label}</span>
                           <span style={{ fontSize:12,fontWeight:600,color:C.ink }}>{meta.name}</span>
-                          <span style={{ fontFamily:MONO,fontSize:11,color:C.sub,marginLeft:"auto" }}>{items.length}</span>
+                          <span style={{ fontFamily:MONO,fontSize:11,color:C.sub,marginLeft:"auto" }}>{items.length}件</span>
                         </div>
                         <div style={{ display:"flex",flexDirection:"column",gap:6 }}>
-                          {items.length===0&&<Empty text="なし"/>}
+                          {items.length===0&&<Empty text="タスクなし"/>}
                           {items.map(t=><PlanCard key={t.id} t={t} mode="bar"/>)}
                         </div>
                       </div>

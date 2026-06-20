@@ -206,9 +206,12 @@ function handleUpdateTask_(body) {
 function handleGenerateCalendarTasks_(body) {
   const polarisAxes = body.polarisAxes || [];
 
-  // 直近14日間の予定を取得
+  // timeframe パラメータに基づいて終了日を計算
+  const TIMEFRAME_DAYS = { '2w': 14, '1m': 30, '3m': 90, '6m': 180, '1y': 365 };
+  const tf   = body.timeframe && TIMEFRAME_DAYS[body.timeframe] ? body.timeframe : '2w';
+  const days = TIMEFRAME_DAYS[tf];
   const now  = new Date();
-  const end  = new Date(now.getTime() + 14 * 24 * 60 * 60 * 1000);
+  const end  = new Date(now.getTime() + days * 24 * 60 * 60 * 1000);
   const cal  = CalendarApp.getDefaultCalendar();
   const evts = cal.getEvents(now, end);
 
@@ -226,6 +229,12 @@ function handleGenerateCalendarTasks_(body) {
   if (!apiKey) throw new Error('GEMINI_API_KEY 未設定');
 
   const today = Utilities.formatDate(new Date(), 'Asia/Tokyo', 'yyyy-MM-dd');
+  const TIMEFRAME_LABEL = { '2w': '直近2週間', '1m': '直近1ヶ月', '3m': '直近3ヶ月', '6m': '直近半年', '1y': '直近1年' };
+  const tfLabel = TIMEFRAME_LABEL[tf] || '直近2週間';
+
+  const longTermNote = (days > 30)
+    ? '\n※取得期間が長い場合、日常の細かな予定は完全に無視し、経営の拡張や家族の重大なイベントなど、準備に数ヶ月を要する戦略的な予定のみを抽出して、今すぐ着手すべき第2領域タスクを逆算せよ'
+    : '';
 
   const prompt =
 `あなたは第2領域タスク推薦アシスタントです。JSONのみ返してください（前置き・コードフェンス禁止）。
@@ -235,9 +244,9 @@ function handleGenerateCalendarTasks_(body) {
 # 人生・仕事の方向性（Polaris）
 ${polarisAxes.map(function(a,i){ return (i+1)+'. '+a; }).join('\n')}
 
-# 直近2週間のカレンダー予定
+# ${tfLabel}のカレンダー予定
 ${JSON.stringify(eventList)}
-
+${longTermNote}
 各予定が Polaris の方向性と関係があり、事前準備が必要なものについて、着手すべき「第2領域の準備タスク」を最大5件提案してください。
 日常ルーティン（移動・食事・定例MTG等）・Polaris と無関係な予定は無視してください。
 

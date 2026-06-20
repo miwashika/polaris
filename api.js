@@ -137,11 +137,12 @@ export async function addTask({ title, due, category }) {
 /**
  * Googleカレンダーの予定からAIがタスクを逆算・提案する
  * @param {string[]} polarisAxes - 方向性の軸テキスト配列
+ * @param {string} [timeframe="2w"] - 取得期間 ("2w"|"1m"|"3m"|"6m"|"1y")
  * @returns {Promise<Array<{suggestTitle, deadlineDate, category, reason}>>}
  */
-export async function generateCalendarSuggestions(polarisAxes) {
+export async function generateCalendarSuggestions(polarisAxes, timeframe = '2w') {
   if (!HAS_GAS) throw new Error('GAS未接続');
-  const data = await gasPost({ action: 'generateCalendarTasks', polarisAxes });
+  const data = await gasPost({ action: 'generateCalendarTasks', polarisAxes, timeframe });
   if (!data.ok) throw new Error(data.error || 'generateCalendarTasks失敗');
   return data.suggestions || [];
 }
