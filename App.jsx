@@ -178,8 +178,22 @@ function SwipeRow({ rowId, openId, setOpenId, onDelete, radius=12, actionWidth=7
 
 // ── メインコンポーネント ──────────────────────────────
 export default function App() {
-  const [tasks,    setTasks]    = useState(HAS_GAS ? [] : SEED);
-  const [loading,  setLoading]  = useState(HAS_GAS);
+  const [tasks,    setTasks]    = useState(()=>{
+    if(!HAS_GAS) return SEED;
+    try{
+      const c=JSON.parse(localStorage.getItem('polaris_tasks_cache')||'null');
+      if(Array.isArray(c)&&c.length>0) return c;
+    }catch{}
+    return [];
+  });
+  const [loading,  setLoading]  = useState(()=>{
+    if(!HAS_GAS) return false;
+    try{
+      const c=JSON.parse(localStorage.getItem('polaris_tasks_cache')||'null');
+      return !(Array.isArray(c)&&c.length>0); // キャッシュ有りならスピナー不要
+    }catch{ return true; }
+  });
+  const [syncingTasks,setSyncingTasks]=useState(false);
   const [gasError, setGasError] = useState(null);
   const [capture,  setCapture]  = useState("");
   const [capturing,setCapturing]= useState(false);
@@ -209,21 +223,32 @@ export default function App() {
     return { i,key:keyOf(d),dow:d.getDay(),wd:WD[d.getDay()],dom:d.getDate(),mon:d.getMonth()+1 };
   }),[]);
 
-  const loadTasks = useCallback(async()=>{
-    setLoading(true);
+  const loadTasks = useCallback(async(showSpinner=true)=>{
+    if(showSpinner) setLoading(true);
     setGasError(null);
     try {
       const result = await fetchTasks();
-      if (result !== null) setTasks(result);
-      // null → GAS未接続、SEEDデータのまま
+      if(result!==null) setTasks(result);
     } catch(e) {
-      setGasError(e.message || 'データ取得に失敗しました');
+      if(showSpinner) setGasError(e.message||'データ取得に失敗しました');
     } finally {
       setLoading(false);
     }
   },[]);
 
-  useEffect(()=>{ if(HAS_GAS) loadTasks(); },[loadTasks]);
+  // 起動時：キャッシュがあればバックグラウンドで静かに更新、なければスピナー表示
+  useEffect(()=>{
+    if(!HAS_GAS) return;
+    try{
+      const c=JSON.parse(localStorage.getItem('polaris_tasks_cache')||'null');
+      loadTasks(!(Array.isArray(c)&&c.length>0));
+    }catch{ loadTasks(true); }
+  },[loadTasks]);
+
+  // tasks が変化するたびにlocalStorageへ自動同期（HAS_GAS 時のみ）
+  useEffect(()=>{
+    if(HAS_GAS) try{ localStorage.setItem('polaris_tasks_cache',JSON.stringify(tasks)); }catch{}
+  },[tasks]);
 
   // calSuggestions が変わるたびにlocalStorageへ永続化
   useEffect(()=>{ localStorage.setItem('polaris_ai_suggestions',JSON.stringify(calSuggestions)); },[calSuggestions]);
@@ -996,6 +1021,19 @@ export default function App() {
                         {insightLoading?"🔄 取得中…":"🔄 AIカレンダー提案を手動取得"}
                       </button>
                       {!HAS_GAS&&<div style={{ fontSize:11,color:C.q1,textAlign:"center",marginTop:5 }}>GAS未接続のため取得できません</div>}
+                      <button
+                        onClick={async()=>{
+                          if(!HAS_GAS||syncingTasks) return;
+                          setSyncingTasks(true);
+                          try{ const r=await fetchTasks(); if(r!==null) setTasks(r); }catch{}
+                          finally{ setSyncingTasks(false); }
+                        }}
+                        disabled={!HAS_GAS||syncingTasks}
+                        style={{ marginTop:8,width:"100%",display:"flex",alignItems:"center",justifyContent:"center",gap:6,fontSize:13,fontWeight:600,color:(!HAS_GAS||syncingTasks)?C.sub:C.ink,background:C.lineSoft,border:`1px solid ${C.line}`,borderRadius:10,padding:"10px",cursor:(!HAS_GAS||syncingTasks)?"default":"pointer" }}
+                      >
+                        {syncingTasks?"⏳ 同期中…":"🔄 Googleタスクを手動同期"}
+                      </button>
+                      {HAS_GAS&&<div style={{ fontSize:11,color:C.sub,textAlign:"center",marginTop:5 }}>キャッシュ済み: {tasks.length} 件</div>}
                     </div>
                   </section>
                   <section style={{ flex:"1 1 300px",minWidth:270,background:"#fff",border:`1px solid ${C.line}`,borderRadius:12,padding:16 }}>
