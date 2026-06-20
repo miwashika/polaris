@@ -68,6 +68,7 @@ function doPost(e) {
       case 'setField':   return handleSetField_(body);
       case 'deleteTask':             return handleDelete_(body);
       case 'addTask':                return handleAddTask_(body);
+      case 'updateTask':             return handleUpdateTask_(body);
       case 'generateCalendarTasks':  return handleGenerateCalendarTasks_(body);
       default:                       return jsonOut_({ ok: false, error: '不明なaction: ' + action });
     }
@@ -156,6 +157,50 @@ function handleAddTask_(body) {
 
   const created = Tasks.Tasks.insert(obj, listId);
   return jsonOut_({ ok: true, task: parseTask_(created, listId, CAT_TO_LIST[cat]) });
+}
+
+function handleUpdateTask_(body) {
+  const { taskId, listId, title, due, importance, span, category } = body;
+  if (!taskId || !listId) return jsonOut_({ ok: false, error: 'taskId/listId必須' });
+
+  const existing = Tasks.Tasks.get(listId, taskId);
+  const meta     = parseMeta_(existing.notes || '');
+
+  const newTitle      = (title      !== undefined) ? String(title).trim()  : stripPrefix_(existing.title || '');
+  const newImportance = (importance !== undefined) ? Number(importance)    : Number(meta.importance !== undefined ? meta.importance : 1);
+  const newDue        = (due        !== undefined) ? (due || null)         : (existing.due ? existing.due.slice(0, 10) : null);
+  const newSpan       = (span       !== undefined) ? span                  : (meta.span || '1ヶ月');
+
+  const quad        = calcQuadrantFromSpan_(newImportance, newDue, null);
+  existing.title    = '[第' + quad + '] ' + newTitle;
+  existing.due      = newDue ? newDue + 'T00:00:00.000Z' : null;
+  meta.importance   = newImportance;
+  meta.span         = newSpan;
+  existing.notes    = buildNotes_(meta.humanNotes, meta);
+
+  const updated  = Tasks.Tasks.update(existing, listId, taskId);
+  const cat      = category || LIST_TO_CAT[(() => {
+    const lists = Tasks.Tasklists.list({ maxResults: 100 }).items || [];
+    const info  = lists.find(function(l) { return l.id === listId; });
+    return info ? info.title : '';
+  })()] || meta.category || 'その他';
+
+  return jsonOut_({ ok: true, task: {
+    id:         updated.id,
+    listId:     listId,
+    category:   cat,
+    title:      newTitle,
+    rawTitle:   updated.title,
+    due:        newDue,
+    importance: newImportance,
+    span:       newSpan,
+    tags:       meta.tags       || [],
+    created:    meta.created    || '',
+    committed:  !!meta.committed,
+    waiting:    false,
+    someday:    false,
+    notes:      meta.humanNotes || '',
+  }});
 }
 
 function handleGenerateCalendarTasks_(body) {

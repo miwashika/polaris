@@ -2,11 +2,12 @@ import React, { useState, useMemo, useEffect, useCallback } from "react";
 import {
   fetchTasks,
   createTask,
-  setDue     as apiSetDue,
+  setDue       as apiSetDue,
   completeTask,
-  setField   as apiSetField,
-  deleteTask as apiDeleteTask,
-  addTask    as apiAddTask,
+  setField     as apiSetField,
+  deleteTask   as apiDeleteTask,
+  addTask      as apiAddTask,
+  updateTask   as apiUpdateTask,
   generateCalendarSuggestions,
   HAS_GAS,
 } from "./api.js";
@@ -40,7 +41,8 @@ const CAT = {
   "その他": "#9BA8B2",
 };
 const catColor = (cat) => CAT[cat] || "#9BA8B2";
-const TAGS = ["電話", "5分", "集中", "移動中", "PC"];
+const TAGS  = ["電話", "5分", "集中", "移動中", "PC"];
+const SPANS = ["今週","1ヶ月","3ヶ月","6ヶ月","1年","3年","5年以上"];
 const ALIGN = {
   on:   { label: "🎯 沿う", color: "#1C8C84", bg: "#EAF5F3" },
   weak: { label: "🟡 やや", color: "#E5973A", bg: "#FBF0DF" },
@@ -129,18 +131,21 @@ function TrendChart({ data }) {
 function SwipeRow({ rowId, openId, setOpenId, onDelete, radius=12, actionWidth=72, children }) {
   const [offset, setOffset] = React.useState(0);
   const [live,   setLive]   = React.useState(false);
-  const drag = React.useRef({ x0:0, y0:0, isH:null, wasOpen:false, cur:0 });
+  const drag     = React.useRef({ x0:0, y0:0, isH:null, wasOpen:false, cur:0 });
+  const dragLock = React.useRef(false);
   const isOpen = openId === rowId;
 
   React.useEffect(()=>{ if(!isOpen && !live) setOffset(0); },[isOpen, live]);
 
   const ts=(e)=>{
+    if(dragLock.current) return;
     const t=e.touches[0];
     const start=isOpen?-actionWidth:0;
     drag.current={x0:t.clientX,y0:t.clientY,isH:null,wasOpen:isOpen,cur:start};
     setOffset(start); setLive(true);
   };
   const tm=(e)=>{
+    if(dragLock.current){setLive(false);return;}
     const r=drag.current, t=e.touches[0];
     const dx=t.clientX-r.x0, dy=t.clientY-r.y0;
     if(r.isH===null){
@@ -169,6 +174,8 @@ function SwipeRow({ rowId, openId, setOpenId, onDelete, radius=12, actionWidth=7
       </div>
       <div
         onTouchStart={ts} onTouchMove={tm} onTouchEnd={te}
+        onDragStart={()=>{ dragLock.current=true; setOffset(0); setLive(false); }}
+        onDragEnd={()=>{ dragLock.current=false; }}
         onClickCapture={(e)=>{if(isOpen){e.stopPropagation();setOpenId(null);}}}
         style={{transform:`translateX(${shown}px)`,transition:live?'none':'transform 0.22s cubic-bezier(0.25,0.46,0.45,0.94)',touchAction:'pan-y',position:'relative',zIndex:1,willChange:'transform'}}
       >{children}</div>
@@ -217,6 +224,8 @@ export default function App() {
   const [calSuggestions,setCalSuggestions]= useState(()=>{ try{return JSON.parse(localStorage.getItem('polaris_ai_suggestions')||'[]');}catch{return[];} });
   const [insightOpen,   setInsightOpen]   = useState(false);
   const [insightLoading,setInsightLoading]= useState(false);
+  const [editTask,      setEditTask]      = useState(null);
+  const [editForm,      setEditForm]      = useState({title:'',important:1,due:'',span:'1ヶ月'});
 
   const week = useMemo(()=>Array.from({length:7},(_,i)=>{
     const d=addDays(TODAY,i);
@@ -333,6 +342,22 @@ export default function App() {
     const t=tasks.find(x=>x.id===id);
     setTasks(ts=>ts.filter(x=>x.id!==id));
     if(t?.listId){ try{ await apiDeleteTask(t.id,t.listId); }catch(_){} }
+  };
+
+  const openEdit=(t)=>{ setEditForm({title:t.title,important:t.important??1,due:t.due||'',span:t.span||'1ヶ月'}); setEditTask(t); };
+  const saveEdit=async()=>{
+    if(!editTask) return;
+    const {title,important,due,span}=editForm;
+    // 楽観的更新
+    setTasks(ts=>ts.map(t=>t.id===editTask.id?{...t,title,important,due:due||null,span}:t));
+    setEditTask(null);
+    // バックグラウンドAPI同期
+    if(editTask.listId){
+      try{
+        const r=await apiUpdateTask({taskId:editTask.id,listId:editTask.listId,title,importance:important,due:due||null,span,category:editTask.cat});
+        if(r?.task) setTasks(ts=>ts.map(t=>t.id===editTask.id?{...r.task,cat:r.task.category,important:r.task.importance,createdAt:r.task.created||''}:t));
+      }catch(_){}
+    }
   };
 
   const approveSuggestion=async(s)=>{
@@ -475,8 +500,8 @@ export default function App() {
     );
     return(
       <SwipeRow rowId={t.id} openId={openSwipeId} setOpenId={setOpenSwipeId} onDelete={handleDelete} radius={12}>
-        <div onClick={()=>toggleDone(t.id)} style={{ display:"flex",alignItems:"center",gap:12,background:"#fff",padding:"13px 14px",border:`1px solid ${C.line}`,borderLeft:`3px solid ${meta.color}`,cursor:"pointer",transition:"background .1s" }}>
-          <div style={{ width:22,height:22,borderRadius:7,border:`1.5px solid ${meta.color}55`,background:"#fff",display:"grid",placeItems:"center",flexShrink:0,color:meta.color }}><Check size={13}/></div>
+        <div onClick={()=>openEdit(t)} style={{ display:"flex",alignItems:"center",gap:12,background:"#fff",padding:"13px 14px",border:`1px solid ${C.line}`,borderLeft:`3px solid ${meta.color}`,cursor:"pointer",transition:"background .1s" }}>
+          <div onClick={(e)=>{e.stopPropagation();toggleDone(t.id);}} style={{ width:22,height:22,borderRadius:7,border:`1.5px solid ${meta.color}55`,background:"#fff",display:"grid",placeItems:"center",flexShrink:0,color:meta.color }}><Check size={13}/></div>
           <div style={{ flex:1,minWidth:0 }}>
             <div style={{ fontSize:14,fontWeight:600,color:C.ink,lineHeight:1.35 }}>{t.title}</div>
             <div style={{ display:"flex",alignItems:"center",gap:7,marginTop:4,flexWrap:"wrap" }}>
@@ -1117,6 +1142,85 @@ export default function App() {
           </div>
         </div>
       )}
+
+      {/* ── タスク編集モーダル ── */}
+      {editTask&&(()=>{
+        const previewQ=editForm.important===1?(daysUntil(editForm.due||null)!==null&&daysUntil(editForm.due||null)<=urgentDays?1:2):(daysUntil(editForm.due||null)!==null&&daysUntil(editForm.due||null)<=urgentDays?3:4);
+        const previewMeta=QUAD[previewQ];
+        return(
+          <div onClick={()=>setEditTask(null)} style={{ position:"fixed",inset:0,background:"#19232d70",display:"grid",placeItems:"center",padding:18,zIndex:60 }}>
+            <div onClick={e=>e.stopPropagation()} style={{ width:"100%",maxWidth:420,background:"#fff",borderRadius:18,boxShadow:"0 8px 32px #19232d28",overflow:"hidden" }}>
+              {/* モーダルヘッダ */}
+              <div style={{ display:"flex",alignItems:"center",gap:8,padding:"16px 18px 12px",borderBottom:`1px solid ${C.line}` }}>
+                <span style={{ fontSize:16 }}>📝</span>
+                <span style={{ fontSize:15,fontWeight:800 }}>タスクの編集</span>
+                <span style={{ fontFamily:MONO,fontSize:11,fontWeight:700,color:previewMeta.color,background:`${previewMeta.color}14`,padding:"2px 8px",borderRadius:20,marginLeft:"auto" }}>{previewMeta.label} {previewMeta.name}</span>
+                <button onClick={()=>setEditTask(null)} style={{ ...miniBtn,width:28,height:28,marginLeft:6 }}><X size={14}/></button>
+              </div>
+              {/* フォーム */}
+              <div style={{ padding:"16px 18px",display:"flex",flexDirection:"column",gap:14 }}>
+                {/* タイトル */}
+                <div>
+                  <div style={{ fontSize:11,fontWeight:700,color:C.sub,marginBottom:5 }}>タイトル</div>
+                  <input value={editForm.title} onChange={e=>setEditForm(f=>({...f,title:e.target.value}))}
+                    style={{ width:"100%",fontSize:14,color:C.ink,border:`1px solid ${C.line}`,borderRadius:9,padding:"9px 11px",background:"#fff",boxSizing:"border-box" }}/>
+                </div>
+                {/* 重要度 */}
+                <div>
+                  <div style={{ fontSize:11,fontWeight:700,color:C.sub,marginBottom:5 }}>重要度</div>
+                  <div style={{ display:"flex",gap:8 }}>
+                    {[{v:1,label:"⭐ 重要"},{v:0,label:"通常"}].map(o=>(
+                      <button key={o.v} onClick={()=>setEditForm(f=>({...f,important:o.v}))}
+                        style={{ flex:1,fontSize:13,fontWeight:600,padding:"8px",borderRadius:9,border:`1.5px solid ${editForm.important===o.v?C.q2:C.line}`,background:editForm.important===o.v?"#EAF5F3":"#fff",color:editForm.important===o.v?C.q2:C.sub,cursor:"pointer" }}>
+                        {o.label}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+                {/* 期日 */}
+                <div>
+                  <div style={{ fontSize:11,fontWeight:700,color:C.sub,marginBottom:5 }}>期日</div>
+                  <input type="date" value={editForm.due||''} min={keyOf(TODAY)}
+                    onChange={e=>setEditForm(f=>({...f,due:e.target.value||''}))}
+                    style={{ fontSize:13,color:editForm.due?C.ink:C.sub,border:`1px solid ${C.line}`,borderRadius:9,padding:"8px 11px",background:"#fff",colorScheme:"light",width:"100%",boxSizing:"border-box" }}/>
+                  {editForm.due&&<button onClick={()=>setEditForm(f=>({...f,due:''}))} style={{ marginTop:4,fontSize:11,color:C.sub,background:"none",border:"none",cursor:"pointer",padding:0 }}>× 期日をクリア</button>}
+                </div>
+                {/* スパン */}
+                <div>
+                  <div style={{ fontSize:11,fontWeight:700,color:C.sub,marginBottom:5 }}>タイムスパン</div>
+                  <div style={{ display:"flex",gap:6,flexWrap:"wrap" }}>
+                    {SPANS.map(s=>(
+                      <button key={s} onClick={()=>setEditForm(f=>({...f,span:s}))}
+                        style={{ fontSize:11,fontWeight:600,padding:"5px 10px",borderRadius:7,border:`1px solid ${editForm.span===s?C.q2:C.line}`,background:editForm.span===s?"#EAF5F3":"#fff",color:editForm.span===s?C.q2:C.sub,cursor:"pointer" }}>
+                        {s}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+                {/* ステータス操作 */}
+                <div>
+                  <div style={{ fontSize:11,fontWeight:700,color:C.sub,marginBottom:5 }}>ステータスを変更</div>
+                  <div style={{ display:"flex",gap:8 }}>
+                    <button onClick={()=>{ setEditTask(null); toggleField(editTask.id,"waiting"); }}
+                      style={{ flex:1,display:"flex",alignItems:"center",justifyContent:"center",gap:5,fontSize:12,fontWeight:600,color:C.q3,background:"#FEF7EC",border:`1px solid ${C.q3}44`,borderRadius:9,padding:"8px",cursor:"pointer" }}>
+                      <Pause size={13}/>保留にする
+                    </button>
+                    <button onClick={()=>{ setEditTask(null); toggleField(editTask.id,"someday"); }}
+                      style={{ flex:1,display:"flex",alignItems:"center",justifyContent:"center",gap:5,fontSize:12,fontWeight:600,color:C.sub,background:C.lineSoft,border:`1px solid ${C.line}`,borderRadius:9,padding:"8px",cursor:"pointer" }}>
+                      <Archive size={13}/>Somedayへ
+                    </button>
+                  </div>
+                </div>
+              </div>
+              {/* フッタ */}
+              <div style={{ display:"flex",gap:8,padding:"12px 18px 16px",borderTop:`1px solid ${C.line}` }}>
+                <button onClick={()=>setEditTask(null)} style={{ flex:1,fontSize:13,fontWeight:600,color:C.sub,background:C.lineSoft,border:"none",borderRadius:10,padding:"10px",cursor:"pointer" }}>キャンセル</button>
+                <button onClick={saveEdit} disabled={!editForm.title.trim()} style={{ flex:2,fontSize:14,fontWeight:700,color:"#fff",background:editForm.title.trim()?C.q2:C.sub,border:"none",borderRadius:10,padding:"10px",cursor:editForm.title.trim()?"pointer":"default" }}>保存する</button>
+              </div>
+            </div>
+          </div>
+        );
+      })()}
 
       {/* ── Polaris Insight モーダル ── */}
       {insightOpen&&calSuggestions.length>0&&(

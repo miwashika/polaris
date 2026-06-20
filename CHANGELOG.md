@@ -4,6 +4,22 @@
 
 ---
 
+## [0.5.7] - 2026-06-20 · Beta
+
+### Fixed
+- **SwipeRow ドラッグ競合バグ修正** — `dragLock` ref を追加。HTML5 DnD の `onDragStart` でスワイプオフセットを0にリセット＆タッチイベントをロック。`onDragEnd` でロック解除。ドラッグ中に赤い削除背景が見える問題を解消
+
+### Added
+- **タスク手動編集モーダル**（📝 タスクの編集）— FocusCard（通常カード）のタップで編集モーダルを開く。チェックアイコンのみ完了処理（`stopPropagation` で分離）
+  - 変更可能項目: タイトル / 重要度（重要/通常）/ 期日 / タイムスパン
+  - リアルタイムで領域プレビュー（「第N領域」バッジ）を更新
+  - ステータス変更ボタン（保留にする / Somedayへ）を配置
+  - 楽観的更新 → バックグラウンドでGAS同期
+- **`Code.gs` — `updateTask` アクション** — title/importance/due/span を更新し `[第N]` プレフィックスを再計算
+- **`api.js` — `updateTask({ taskId, listId, title, importance, due, span, category })`** 追加
+
+---
+
 ## [0.5.6] - 2026-06-20 · Beta
 
 ### Added
