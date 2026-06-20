@@ -8,7 +8,7 @@ import {
   deleteTask as apiDeleteTask,
   HAS_GAS,
 } from "./api.js";
-import { Check, RotateCcw, Pin, Pause, Archive, Sun, ListChecks, X, Calendar, Star, Settings, Inbox, Trash2 } from "lucide-react";
+import { Check, RotateCcw, Pin, Pause, Archive, Sun, ListChecks, X, Calendar, Star, Inbox, Trash2 } from "lucide-react";
 
 /**
  * 第2領域ボード v2 — 「今日（focus）」と「整理（plan）」の2モード
@@ -40,9 +40,9 @@ const CAT = {
 const catColor = (cat) => CAT[cat] || "#9BA8B2";
 const TAGS = ["電話", "5分", "集中", "移動中", "PC"];
 const ALIGN = {
-  on:   { label: "沿○", color: "#1C8C84", bg: "#EAF5F3" },
-  weak: { label: "やや", color: "#E5973A", bg: "#FBF0DF" },
-  off:  { label: "ズレ", color: "#C0392B", bg: "#FCEBE9" },
+  on:   { label: "🎯 沿う", color: "#1C8C84", bg: "#EAF5F3" },
+  weak: { label: "🟡 やや", color: "#E5973A", bg: "#FBF0DF" },
+  off:  { label: "⚠️ ズレ", color: "#C0392B", bg: "#FCEBE9" },
 };
 const POLARIS_SEED = [
   { id: 9001, text: "予防中心の歯科医院をつくる" },
@@ -433,7 +433,7 @@ export default function App() {
   };
 
   // Plan 用カード（bar / full）
-  const alignBadge=(t)=>{ const r=align[t.id]; if(!r||!ALIGN[r.align])return null; const a=ALIGN[r.align]; return <span title={r.why} style={{ fontSize:10,fontWeight:700,color:a.color,background:a.bg,padding:"1px 6px",borderRadius:5 }}>{a.label}</span>; };
+  const alignBadge=(t)=>{ if(view!=="plan") return null; const r=align[t.id]; if(!r||!ALIGN[r.align])return null; const a=ALIGN[r.align]; return <span title={r.why} style={{ fontSize:10,fontWeight:700,color:a.color,background:a.bg,padding:"1px 6px",borderRadius:5 }}>{a.label}</span>; };
 
   const PlanCard=({t,mode})=>{
     const q=quadrantOf(t),meta=QUAD[q],d=daysUntil(t.due),warn=approaching(t),isSel=selected===t.id,aging=isAging(t);
@@ -551,20 +551,18 @@ export default function App() {
       `}</style>
 
       {/* ── ヘッダー ── */}
-      <header style={{ display:"flex",alignItems:"center",gap:12,padding:"14px 18px 12px",background:"#fff",borderBottom:`1px solid ${C.line}`,position:"sticky",top:0,zIndex:10 }}>
-        <div style={{ fontFamily:MONO,fontSize:13,fontWeight:700,color:C.q2,letterSpacing:"-.01em" }}>Polaris</div>
-        <div style={{ fontFamily:MONO,fontSize:12,color:C.sub }}>{todayStr}</div>
+      <header style={{ display:"flex",alignItems:"center",gap:8,padding:"12px 18px",background:"#fff",borderBottom:`1px solid ${C.line}`,position:"sticky",top:0,zIndex:10 }}>
+        <button onClick={()=>{setSubOpen(true);setSubView("polaris");}} style={{ fontFamily:MONO,fontSize:13,fontWeight:700,color:C.q2,letterSpacing:"-.01em",background:"none",border:"none",cursor:"pointer",padding:"3px 6px",borderRadius:6,flexShrink:0 }}>Polaris</button>
+        <div style={{ fontFamily:MONO,fontSize:12,color:C.sub,flexShrink:0 }}>{todayStr}</div>
         <div style={{ flex:1 }}/>
         {/* モードタブ */}
-        <div style={{ display:"flex",gap:2,background:C.lineSoft,borderRadius:11,padding:3 }}>
+        <div style={{ display:"flex",gap:2,background:C.lineSoft,borderRadius:11,padding:3,flexShrink:0 }}>
           {[["focus","🎯 今日"],["plan","🗺️ 整理"]].map(([id,label])=>(
-            <button key={id} onClick={()=>setView(id)} style={{ fontSize:13,fontWeight:700,padding:"6px 14px",borderRadius:8,cursor:"pointer",border:"none",color:view===id?C.ink:C.sub,background:view===id?"#fff":"transparent",boxShadow:view===id?"0 1px 3px #19232d14":"none",transition:"all .15s" }}>{label}</button>
+            <button key={id} onClick={()=>setView(id)} style={{ fontSize:13,fontWeight:700,padding:"6px 14px",borderRadius:8,cursor:"pointer",border:"none",color:view===id?C.ink:C.sub,background:view===id?"#fff":"transparent",boxShadow:view===id?"0 1px 3px #19232d14":"none",transition:"all .15s",whiteSpace:"nowrap" }}>{label}</button>
           ))}
         </div>
         {/* 週次レビュー */}
-        <button onClick={()=>setReviewOpen(true)} style={{ display:"flex",alignItems:"center",gap:5,fontSize:12,fontWeight:700,color:"#fff",background:C.q2,border:"none",borderRadius:9,padding:"7px 12px",cursor:"pointer" }}><ListChecks size={14}/>週次レビュー</button>
-        {/* ギアアイコン */}
-        <button onClick={()=>setSubOpen(true)} aria-label="詳細メニュー" style={{ ...miniBtn,width:34,height:34,borderRadius:9,border:`1px solid ${C.line}`,color:C.sub }}><Settings size={17}/></button>
+        <button onClick={()=>setReviewOpen(true)} style={{ display:"flex",alignItems:"center",gap:5,fontSize:12,fontWeight:700,color:"#fff",background:C.q2,border:"none",borderRadius:9,padding:"8px 14px",cursor:"pointer",flexShrink:0,whiteSpace:"nowrap" }}><ListChecks size={14}/>週次レビュー</button>
       </header>
 
       {/* ── Focus ビュー ── */}
@@ -678,6 +676,13 @@ export default function App() {
       {view==="plan"&&(
         <div style={{ padding:"20px 18px 40px" }}>
           {banner(diagBoard,"診断")}
+          {/* 方向性チェック */}
+          <div style={{ display:"flex",alignItems:"center",justifyContent:"flex-end",gap:8,marginTop:-6,marginBottom:14 }}>
+            {checkErr&&<span style={{ fontSize:12,color:C.q1 }}>{checkErr}</span>}
+            <button onClick={runAlignment} disabled={checking} style={{ display:"flex",alignItems:"center",gap:5,fontSize:12,fontWeight:600,color:checking?C.sub:C.q2,background:"#fff",border:`1px solid ${C.line}`,borderRadius:9,padding:"6px 13px",cursor:checking?"default":"pointer",flexShrink:0 }}>
+              🧭 {checking?"判定中…":"方向性チェック"}
+            </button>
+          </div>
           {/* フィルタ行 */}
           <div style={{ display:"flex",alignItems:"center",justifyContent:"space-between",flexWrap:"wrap",gap:10,marginBottom:10 }}>
             <div style={{ display:"flex",alignItems:"center",gap:6,flexWrap:"wrap" }}>
