@@ -128,42 +128,54 @@ function TrendChart({ data }) {
 }
 
 // ── スワイプ行コンポーネント ───────────────────────────
-const SWIPE_THRESHOLD = 15; // この距離を超えるまでUIを動かさない
+const SWIPE_THRESHOLD = 15;
 function SwipeRow({ rowId, openId, setOpenId, onDelete, radius=12, actionWidth=72, children }) {
-  const [offset, setOffset] = React.useState(0);
-  const [live,   setLive]   = React.useState(false);
-  // isH: null=未判定 / true=水平 / false=垂直（キャンセル済み）
-  const st = React.useRef({ x0:0, y0:0, isH:null, wasOpen:false, cur:0, active:false });
+  const [offset,     setOffset]     = React.useState(0);
+  const [live,       setLive]       = React.useState(false);
+  const [isSwiping,  setIsSwiping]  = React.useState(false); // 視覚的ロック: true になるまで赤背景を隠す
+  const st        = React.useRef({ x0:0, y0:0, isH:null, wasOpen:false, cur:0, active:false });
+  const lpTimer   = React.useRef(null);   // 200ms長押しタイマー
+  const isLpLocked= React.useRef(false);  // 時間的ロック: trueならスワイプ無効
   const isOpen = openId === rowId;
 
-  React.useEffect(()=>{ if(!isOpen && !live) setOffset(0); },[isOpen, live]);
+  React.useEffect(()=>{ if(!isOpen && !live){ setOffset(0); setIsSwiping(false); } },[isOpen, live]);
 
   const ts=(e)=>{
     const t=e.touches[0];
+    isLpLocked.current = false;
     st.current={ x0:t.clientX, y0:t.clientY, isH:null, wasOpen:isOpen, cur:isOpen?-actionWidth:0, active:true };
-    // まだUIは動かさない（threshold待ち）
+    // 200ms以内にスワイプが始まらなければロック（長押し確定）
+    lpTimer.current = setTimeout(()=>{ isLpLocked.current = true; }, 200);
   };
 
   const tm=(e)=>{
     const r=st.current;
     if(!r.active) return;
+    if(isLpLocked.current) return; // 時間的ロック: 長押し確定後は一切動かさない
     const t=e.touches[0];
     const dx=t.clientX-r.x0, dy=t.clientY-r.y0;
     const absDx=Math.abs(dx), absDy=Math.abs(dy);
 
     // ① 縦スクロール優先なら即キャンセル
-    if(r.isH===null && absDy>absDx){ r.isH=false; r.active=false; setLive(false); setOffset(isOpen?-actionWidth:0); return; }
+    if(r.isH===null && absDy>absDx){
+      r.isH=false; r.active=false;
+      clearTimeout(lpTimer.current);
+      setLive(false); setIsSwiping(false); setOffset(isOpen?-actionWidth:0);
+      return;
+    }
 
     // ② 水平と判定されるまで15px待つ
     if(r.isH===null){
-      if(absDx < SWIPE_THRESHOLD) return; // threshold未満はUI変化なし
+      if(absDx < SWIPE_THRESHOLD) return;
+      clearTimeout(lpTimer.current); // スワイプ確定 → 長押しタイマーを解除
       r.isH=true;
       setLive(true);
+      setIsSwiping(true); // ここで初めて赤背景を表示（視覚的ロック解除）
     }
 
     if(!r.isH) return;
 
-    // ③ threshold超え → スライド開始
+    // ③ threshold超え → スライド
     const base = r.wasOpen ? -actionWidth : 0;
     const next = Math.min(4, Math.max(-actionWidth, base + dx));
     r.cur = next;
@@ -171,26 +183,29 @@ function SwipeRow({ rowId, openId, setOpenId, onDelete, radius=12, actionWidth=7
   };
 
   const te=()=>{
+    clearTimeout(lpTimer.current);
+    isLpLocked.current = false;
     const r=st.current;
     r.active=false;
     setLive(false);
-    if(!r.isH) return;
+    if(!r.isH){ setIsSwiping(false); return; }
     if(r.cur < -actionWidth/2){ setOpenId(rowId); setOffset(-actionWidth); }
-    else{ if(isOpen) setOpenId(null); setOffset(0); }
+    else{ if(isOpen) setOpenId(null); setOffset(0); setIsSwiping(false); }
   };
 
   const shown = live ? offset : (isOpen ? -actionWidth : 0);
   return(
     <div style={{position:'relative',overflow:'hidden',borderRadius:radius}}>
-      <div style={{position:'absolute',inset:0,display:'flex',justifyContent:'flex-end'}}>
+      {/* 視覚的ロック: isSwiping が true になるまで opacity:0 でiOSにキャプチャされない */}
+      <div style={{position:'absolute',inset:0,display:'flex',justifyContent:'flex-end',opacity:isSwiping||isOpen?1:0,transition:'opacity 0.1s'}}>
         <button
-          onClick={(e)=>{e.stopPropagation();setOpenId(null);onDelete(rowId);}}
+          onClick={(e)=>{e.stopPropagation();setOpenId(null);setIsSwiping(false);onDelete(rowId);}}
           style={{width:actionWidth,border:'none',background:C.q1,color:'#fff',cursor:'pointer',display:'flex',flexDirection:'column',alignItems:'center',justifyContent:'center',gap:3,fontSize:11,fontWeight:700,borderRadius:`0 ${radius}px ${radius}px 0`}}
         ><Trash2 size={16}/><span>削除</span></button>
       </div>
       <div
         onTouchStart={ts} onTouchMove={tm} onTouchEnd={te}
-        onClickCapture={(e)=>{if(isOpen){e.stopPropagation();setOpenId(null);}}}
+        onClickCapture={(e)=>{if(isOpen){e.stopPropagation();setOpenId(null);setIsSwiping(false);}}}
         style={{
           transform:`translateX(${shown}px)`,
           transition:live?'none':'transform 0.22s cubic-bezier(0.25,0.46,0.45,0.94)',
@@ -198,6 +213,7 @@ function SwipeRow({ rowId, openId, setOpenId, onDelete, radius=12, actionWidth=7
           WebkitTouchCallout:'none',
           WebkitUserSelect:'none',
           userSelect:'none',
+          WebkitUserDrag:'none',   // iOSネイティブドラッグプレビューを明示的に禁止
           position:'relative',zIndex:1,willChange:'transform',
         }}
       >{children}</div>
