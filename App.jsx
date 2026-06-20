@@ -551,18 +551,20 @@ export default function App() {
       `}</style>
 
       {/* ── ヘッダー ── */}
-      <header style={{ display:"flex",alignItems:"center",gap:8,padding:"12px 18px",background:"#fff",borderBottom:`1px solid ${C.line}`,position:"sticky",top:0,zIndex:10 }}>
-        <button onClick={()=>{setSubOpen(true);setSubView("polaris");}} style={{ fontFamily:MONO,fontSize:13,fontWeight:700,color:C.q2,letterSpacing:"-.01em",background:"none",border:"none",cursor:"pointer",padding:"3px 6px",borderRadius:6,flexShrink:0 }}>Polaris</button>
-        <div style={{ fontFamily:MONO,fontSize:12,color:C.sub,flexShrink:0 }}>{todayStr}</div>
-        <div style={{ flex:1 }}/>
+      <header style={{ display:"flex",alignItems:"center",justifyContent:"space-between",padding:"10px 14px",background:"#fff",borderBottom:`1px solid ${C.line}`,position:"sticky",top:0,zIndex:10 }}>
+        {/* タイトル＆日付（縦積み・タップで設定） */}
+        <button onClick={()=>{setSubOpen(true);setSubView("polaris");}} style={{ display:"flex",flexDirection:"column",alignItems:"flex-start",gap:1,background:"none",border:"none",cursor:"pointer",padding:"2px 4px",borderRadius:6 }}>
+          <span style={{ fontFamily:MONO,fontSize:13,fontWeight:700,color:C.q2,letterSpacing:"-.01em",lineHeight:1.2 }}>Polaris</span>
+          <span style={{ fontFamily:MONO,fontSize:11,color:C.sub,lineHeight:1.2 }}>{todayStr}</span>
+        </button>
         {/* モードタブ */}
         <div style={{ display:"flex",gap:2,background:C.lineSoft,borderRadius:11,padding:3,flexShrink:0 }}>
           {[["focus","🎯 今日"],["plan","🗺️ 整理"]].map(([id,label])=>(
-            <button key={id} onClick={()=>setView(id)} style={{ fontSize:13,fontWeight:700,padding:"6px 14px",borderRadius:8,cursor:"pointer",border:"none",color:view===id?C.ink:C.sub,background:view===id?"#fff":"transparent",boxShadow:view===id?"0 1px 3px #19232d14":"none",transition:"all .15s",whiteSpace:"nowrap" }}>{label}</button>
+            <button key={id} onClick={()=>setView(id)} style={{ fontSize:12,fontWeight:700,padding:"5px 10px",borderRadius:8,cursor:"pointer",border:"none",color:view===id?C.ink:C.sub,background:view===id?"#fff":"transparent",boxShadow:view===id?"0 1px 3px #19232d14":"none",transition:"all .15s",whiteSpace:"nowrap" }}>{label}</button>
           ))}
         </div>
-        {/* 週次レビュー */}
-        <button onClick={()=>setReviewOpen(true)} style={{ display:"flex",alignItems:"center",gap:5,fontSize:12,fontWeight:700,color:"#fff",background:C.q2,border:"none",borderRadius:9,padding:"8px 14px",cursor:"pointer",flexShrink:0,whiteSpace:"nowrap" }}><ListChecks size={14}/>週次レビュー</button>
+        {/* 今週やること */}
+        <button onClick={()=>setReviewOpen(true)} style={{ display:"flex",alignItems:"center",gap:4,fontSize:11,fontWeight:700,color:"#fff",background:C.q2,border:"none",borderRadius:9,padding:"7px 11px",cursor:"pointer",flexShrink:0,whiteSpace:"nowrap" }}><ListChecks size={13}/>今週やること</button>
       </header>
 
       {/* ── Focus ビュー ── */}
