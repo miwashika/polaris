@@ -111,4 +111,28 @@ export async function deleteTask(taskId, listId) {
   if (!data.ok) throw new Error(data.error || 'deleteTask失敗');
 }
 
+/**
+ * 構造化データからタスクを直接登録する（Gemini分類不要の場合）
+ * @param {{ title: string, due: string|null, category: string }} params
+ * @returns {Promise<{task}>}
+ */
+export async function addTask({ title, due, category }) {
+  if (!HAS_GAS) throw new Error('GAS未接続');
+  const data = await gasPost({ action: 'addTask', title, due: due || null, category: category || 'その他' });
+  if (!data.ok) throw new Error(data.error || 'addTask失敗');
+  return { task: data.task };
+}
+
+/**
+ * Googleカレンダーの予定からAIがタスクを逆算・提案する
+ * @param {string[]} polarisAxes - 方向性の軸テキスト配列
+ * @returns {Promise<Array<{suggestTitle, deadlineDate, category, reason}>>}
+ */
+export async function generateCalendarSuggestions(polarisAxes) {
+  if (!HAS_GAS) throw new Error('GAS未接続');
+  const data = await gasPost({ action: 'generateCalendarTasks', polarisAxes });
+  if (!data.ok) throw new Error(data.error || 'generateCalendarTasks失敗');
+  return data.suggestions || [];
+}
+
 export { HAS_GAS };

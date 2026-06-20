@@ -6,6 +6,8 @@ import {
   completeTask,
   setField   as apiSetField,
   deleteTask as apiDeleteTask,
+  addTask    as apiAddTask,
+  generateCalendarSuggestions,
   HAS_GAS,
 } from "./api.js";
 import { Check, RotateCcw, Pin, Pause, Archive, Sun, ListChecks, X, Calendar, Star, Inbox, Trash2 } from "lucide-react";
@@ -197,7 +199,10 @@ export default function App() {
   const [align,    setAlign]    = useState({});
   const [checking,   setChecking]   = useState(false);
   const [checkErr,   setCheckErr]   = useState(null);
-  const [openSwipeId,setOpenSwipeId]= useState(null);
+  const [openSwipeId,   setOpenSwipeId]   = useState(null);
+  const [calSuggestions,setCalSuggestions]= useState([]);
+  const [insightOpen,   setInsightOpen]   = useState(false);
+  const [insightLoading,setInsightLoading]= useState(false);
 
   const week = useMemo(()=>Array.from({length:7},(_,i)=>{
     const d=addDays(TODAY,i);
@@ -219,6 +224,18 @@ export default function App() {
   },[]);
 
   useEffect(()=>{ if(HAS_GAS) loadTasks(); },[loadTasks]);
+
+  useEffect(()=>{
+    if(!HAS_GAS||polaris.length===0) return;
+    const todayKey=keyOf(TODAY);
+    if(localStorage.getItem('polaris_insight_date')===todayKey) return;
+    setInsightLoading(true);
+    generateCalendarSuggestions(polaris.map(p=>p.text))
+      .then(list=>{ if(list.length>0){setCalSuggestions(list);setInsightOpen(true);} localStorage.setItem('polaris_insight_date',todayKey); })
+      .catch(()=>{})
+      .finally(()=>setInsightLoading(false));
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  },[]);
 
   // 計算関数
   const quadrantOf=(t)=>{ const d=daysUntil(t.due),u=d!==null&&d<=urgentDays; return t.important?(u?1:2):(u?3:4); };
@@ -284,6 +301,15 @@ export default function App() {
     setTasks(ts=>ts.filter(x=>x.id!==id));
     if(t?.listId){ try{ await apiDeleteTask(t.id,t.listId); }catch(_){} }
   };
+
+  const approveSuggestion=async(s)=>{
+    setCalSuggestions(cs=>cs.filter(x=>x!==s));
+    try{
+      const {task}=await apiAddTask({title:s.suggestTitle,due:s.deadlineDate,category:s.category});
+      setTasks(ts=>[{...task,cat:task.category,important:task.importance,createdAt:task.created||''},...ts]);
+    }catch(_){}
+  };
+  const skipSuggestion=(s)=>setCalSuggestions(cs=>cs.filter(x=>x!==s));
 
   const addPolaris=()=>{ const v=polarisInput.trim(); if(!v)return; setPolaris(p=>[...p,{id:Date.now(),text:v}]); setPolarisInput(""); };
   const delPolaris=(id)=>setPolaris(p=>p.filter(x=>x.id!==id));
@@ -670,6 +696,36 @@ export default function App() {
             </section>
           )}
 
+          {/* 💡 AIからの提案（モーダルを閉じた後も残っている提案） */}
+          {!insightOpen&&calSuggestions.length>0&&(
+            <section style={{ background:"#fff",borderRadius:14,padding:"14px 16px",border:`1px solid ${C.line}`,borderTop:`2px solid ${C.q2}` }}>
+              <div style={{ display:"flex",alignItems:"center",gap:8,marginBottom:12 }}>
+                <span style={{ fontSize:14 }}>💡</span>
+                <span style={{ fontSize:13,fontWeight:700 }}>AIからの提案</span>
+                <span style={{ fontFamily:MONO,fontSize:11,color:C.sub,marginLeft:4 }}>カレンダー分析</span>
+                <button onClick={()=>setInsightOpen(true)} style={{ marginLeft:"auto",fontSize:11,color:C.q2,background:"none",border:"none",cursor:"pointer",textDecoration:"underline" }}>まとめて確認</button>
+              </div>
+              <div style={{ display:"flex",flexDirection:"column",gap:8 }}>
+                {calSuggestions.map((s,i)=>(
+                  <div key={i} style={{ display:"flex",alignItems:"flex-start",gap:10,padding:"10px 12px",background:C.paper,border:`1px solid ${C.line}`,borderRadius:10 }}>
+                    <div style={{ flex:1,minWidth:0 }}>
+                      <div style={{ fontSize:13,fontWeight:600,color:C.ink,lineHeight:1.4 }}>{s.suggestTitle}</div>
+                      <div style={{ display:"flex",gap:7,marginTop:3,flexWrap:"wrap" }}>
+                        <span style={{ fontSize:11,color:catColor(s.category),fontWeight:600 }}>{s.category}</span>
+                        <span style={{ fontFamily:MONO,fontSize:11,color:C.sub }}>{s.deadlineDate}</span>
+                        <span style={{ fontSize:11,color:C.sub,opacity:.8 }}>{s.reason}</span>
+                      </div>
+                    </div>
+                    <div style={{ display:"flex",gap:5,flexShrink:0 }}>
+                      <button onClick={()=>approveSuggestion(s)} style={{ fontSize:11,fontWeight:700,color:"#fff",background:C.q2,border:"none",borderRadius:7,padding:"5px 10px",cursor:"pointer" }}>追加</button>
+                      <button onClick={()=>skipSuggestion(s)} style={{ fontSize:11,color:C.sub,background:"#fff",border:`1px solid ${C.line}`,borderRadius:7,padding:"5px 8px",cursor:"pointer" }}>×</button>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </section>
+          )}
+
           <div style={{ textAlign:"center",fontSize:11,color:C.sub }}>{HAS_GAS?"Googleタスク接続済み":"GAS未接続 · サンプルデータ表示中"}</div>
         </div>
       )}
@@ -998,6 +1054,48 @@ export default function App() {
               この{committedList.length}件を今週のコミットにする
             </button>
           </div>
+        </div>
+      )}
+
+      {/* ── Polaris Insight モーダル ── */}
+      {insightOpen&&calSuggestions.length>0&&(
+        <div onClick={()=>setInsightOpen(false)} style={{ position:"fixed",inset:0,background:"#19232d70",display:"grid",placeItems:"center",padding:18,zIndex:60 }}>
+          <div onClick={e=>e.stopPropagation()} style={{ width:"100%",maxWidth:460,maxHeight:"85vh",overflow:"auto",background:"#fff",borderRadius:18,boxShadow:"0 8px 32px #19232d28",display:"flex",flexDirection:"column" }}>
+            <div style={{ padding:"18px 18px 14px",borderBottom:`1px solid ${C.line}`,position:"sticky",top:0,background:"#fff" }}>
+              <div style={{ display:"flex",alignItems:"center",gap:8,marginBottom:2 }}>
+                <span style={{ fontSize:18 }}>✨</span>
+                <span style={{ fontSize:15,fontWeight:800,color:C.ink }}>Polaris Insight</span>
+                <button onClick={()=>setInsightOpen(false)} style={{ ...miniBtn,marginLeft:"auto",width:28,height:28 }}><X size={15}/></button>
+              </div>
+              <p style={{ fontSize:12,color:C.sub,margin:0,lineHeight:1.6 }}>カレンダーの予定から、事前に着手すべき第2領域タスクをAIが提案しています。</p>
+            </div>
+            <div style={{ padding:"14px 16px",display:"flex",flexDirection:"column",gap:10,flex:1 }}>
+              {calSuggestions.map((s,i)=>(
+                <div key={i} style={{ background:C.paper,border:`1px solid ${C.line}`,borderLeft:`3px solid ${C.q2}`,borderRadius:11,padding:"12px 14px" }}>
+                  <div style={{ fontSize:14,fontWeight:700,color:C.ink,lineHeight:1.4,marginBottom:5 }}>{s.suggestTitle}</div>
+                  <div style={{ display:"flex",alignItems:"center",gap:8,marginBottom:8,flexWrap:"wrap" }}>
+                    <span style={{ fontSize:11,color:catColor(s.category),fontWeight:700,background:`${catColor(s.category)}16`,padding:"2px 8px",borderRadius:20 }}>{s.category}</span>
+                    <span style={{ fontFamily:MONO,fontSize:11,color:C.sub }}>期日: {s.deadlineDate}</span>
+                  </div>
+                  <p style={{ fontSize:11.5,color:C.sub,margin:"0 0 10px",lineHeight:1.5 }}>{s.reason}</p>
+                  <div style={{ display:"flex",gap:8 }}>
+                    <button onClick={()=>approveSuggestion(s)} style={{ flex:1,fontSize:13,fontWeight:700,color:"#fff",background:C.q2,border:"none",borderRadius:9,padding:"8px",cursor:"pointer" }}>+ タスクに追加</button>
+                    <button onClick={()=>skipSuggestion(s)} style={{ fontSize:13,fontWeight:600,color:C.sub,background:"#fff",border:`1px solid ${C.line}`,borderRadius:9,padding:"8px 14px",cursor:"pointer" }}>スキップ</button>
+                  </div>
+                </div>
+              ))}
+            </div>
+            <div style={{ padding:"12px 16px",borderTop:`1px solid ${C.line}`,position:"sticky",bottom:0,background:"#fff" }}>
+              <button onClick={()=>setInsightOpen(false)} style={{ width:"100%",fontSize:13,fontWeight:700,color:C.ink,background:C.lineSoft,border:"none",borderRadius:10,padding:"10px",cursor:"pointer" }}>後で決める</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ── ローディングトースト ── */}
+      {insightLoading&&(
+        <div style={{ position:"fixed",bottom:24,left:"50%",transform:"translateX(-50%)",background:"#fff",border:`1px solid ${C.line}`,borderRadius:20,padding:"8px 16px",fontSize:12,color:C.sub,boxShadow:"0 2px 10px #19232d18",zIndex:60,whiteSpace:"nowrap",pointerEvents:"none" }}>
+          🧭 カレンダーを分析中…
         </div>
       )}
     </div>

@@ -4,6 +4,21 @@
 
 ---
 
+## [0.5.4] - 2026-06-20 · Beta
+
+### Added
+- **Polaris Insight（カレンダー × AI タスク提案）** — Googleカレンダーの直近2週間の予定をGemini 2.5 Flashに渡し、第2領域の準備タスクを逆算・提案する機能
+  - 1日1回のみ取得（localStorage で日付キャッシュ）。バックグラウンド実行でメイン画面の操作を妨げない
+  - 取得中は画面下部に小さなトースト「🧭 カレンダーを分析中…」を表示
+  - 取得完了後、中央に「✨ Polaris Insight」モーダルが出現。各提案に「タスクに追加」「スキップ」ボタンを配置
+  - モーダルを「後で決める」で閉じると、未決の提案が Focus ビュー最下部の「💡 AIからの提案」セクションに残り、個別に追加・×消去が可能
+- **`Code.gs` — `generateCalendarTasks` アクション** — `CalendarApp` で直近14日を取得しGeminiへ送信。`[{ suggestTitle, deadlineDate, category, reason }]` 形式で返却
+- **`Code.gs` — `addTask` アクション** — 分類済みパラメータ（title / due / category）から直接Googleタスクに登録（Gemini分類をスキップ）
+- **`api.js` — `generateCalendarSuggestions(polarisAxes)`** — 上記GASエンドポイントを呼び出す関数
+- **`api.js` — `addTask({ title, due, category })`** — 構造化データでタスクを直接登録する関数
+
+---
+
 ## [0.5.3] - 2026-06-20 · Beta
 
 ### Changed

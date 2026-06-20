@@ -66,8 +66,10 @@ function doPost(e) {
       case 'setDue':     return handleSetDue_(body);
       case 'complete':   return handleComplete_(body);
       case 'setField':   return handleSetField_(body);
-      case 'deleteTask': return handleDelete_(body);
-      default:           return jsonOut_({ ok: false, error: '不明なaction: ' + action });
+      case 'deleteTask':             return handleDelete_(body);
+      case 'addTask':                return handleAddTask_(body);
+      case 'generateCalendarTasks':  return handleGenerateCalendarTasks_(body);
+      default:                       return jsonOut_({ ok: false, error: '不明なaction: ' + action });
     }
   } catch (err) {
     return jsonOut_({ ok: false, error: String(err) });
@@ -138,6 +140,94 @@ function handleDelete_(body) {
   if (!taskId || !listId) return jsonOut_({ ok: false, error: 'taskId/listId必須' });
   Tasks.Tasks.remove(listId, taskId);
   return jsonOut_({ ok: true });
+}
+
+function handleAddTask_(body) {
+  const { title, due, category } = body;
+  if (!title) return jsonOut_({ ok: false, error: 'title必須' });
+
+  const cat    = CATEGORIES.includes(category) ? category : 'その他';
+  const listId = getOrCreateList_(CAT_TO_LIST[cat]);
+  const today  = Utilities.formatDate(new Date(), 'Asia/Tokyo', 'yyyy-MM-dd');
+  const quad   = calcQuadrantFromSpan_(1, due || null, today);
+  const notes  = buildNotes_('', { importance: 1, span: '1ヶ月', tags: [], created: today, committed: false });
+  const obj    = { title: '[第' + quad + '] ' + title, notes: notes };
+  if (due) obj.due = due + 'T00:00:00.000Z';
+
+  const created = Tasks.Tasks.insert(obj, listId);
+  return jsonOut_({ ok: true, task: parseTask_(created, listId, CAT_TO_LIST[cat]) });
+}
+
+function handleGenerateCalendarTasks_(body) {
+  const polarisAxes = body.polarisAxes || [];
+
+  // 直近14日間の予定を取得
+  const now  = new Date();
+  const end  = new Date(now.getTime() + 14 * 24 * 60 * 60 * 1000);
+  const cal  = CalendarApp.getDefaultCalendar();
+  const evts = cal.getEvents(now, end);
+
+  if (evts.length === 0) return jsonOut_({ ok: true, suggestions: [] });
+
+  const eventList = evts.map(function(e) {
+    return {
+      title: e.getTitle(),
+      start: Utilities.formatDate(e.getStartTime(), 'Asia/Tokyo', 'yyyy-MM-dd HH:mm'),
+      end:   Utilities.formatDate(e.getEndTime(),   'Asia/Tokyo', 'yyyy-MM-dd HH:mm'),
+    };
+  });
+
+  const apiKey = PropertiesService.getScriptProperties().getProperty('GEMINI_API_KEY');
+  if (!apiKey) throw new Error('GEMINI_API_KEY 未設定');
+
+  const today = Utilities.formatDate(new Date(), 'Asia/Tokyo', 'yyyy-MM-dd');
+
+  const prompt =
+`あなたは第2領域タスク推薦アシスタントです。JSONのみ返してください（前置き・コードフェンス禁止）。
+
+今日: ${today}
+
+# 人生・仕事の方向性（Polaris）
+${polarisAxes.map(function(a,i){ return (i+1)+'. '+a; }).join('\n')}
+
+# 直近2週間のカレンダー予定
+${JSON.stringify(eventList)}
+
+各予定が Polaris の方向性と関係があり、事前準備が必要なものについて、着手すべき「第2領域の準備タスク」を最大5件提案してください。
+日常ルーティン（移動・食事・定例MTG等）・Polaris と無関係な予定は無視してください。
+
+# 出力スキーマ（JSONのみ）
+[{"suggestTitle":"命令形タイトル","deadlineDate":"YYYY-MM-DD（予定の2〜3日前が目安）","category":${JSON.stringify(CATEGORIES)}のいずれか,"reason":"日本語30字以内の理由"}]
+
+提案がゼロの場合は [] を返す。`;
+
+  const url     = 'https://generativelanguage.googleapis.com/v1beta/models/' + GEMINI_MODEL + ':generateContent?key=' + apiKey;
+  const payload = {
+    contents:         [{ parts: [{ text: prompt }] }],
+    generationConfig: { temperature: 0.3, responseMimeType: 'application/json' },
+  };
+  const res = UrlFetchApp.fetch(url, {
+    method: 'post', contentType: 'application/json',
+    payload: JSON.stringify(payload), muteHttpExceptions: true,
+  });
+
+  if (res.getResponseCode() !== 200) {
+    throw new Error('Gemini ' + res.getResponseCode() + ': ' + res.getContentText().slice(0, 200));
+  }
+
+  const data = JSON.parse(res.getContentText());
+  let   txt  = data.candidates[0].content.parts[0].text.trim()
+                   .replace(/^```json\s*/i,'').replace(/```$/i,'').trim();
+  const arr  = JSON.parse(txt);
+
+  const suggestions = (Array.isArray(arr) ? arr : []).filter(function(s) {
+    return s.suggestTitle && s.deadlineDate && /^\d{4}-\d{2}-\d{2}$/.test(s.deadlineDate);
+  }).map(function(s) {
+    if (!CATEGORIES.includes(s.category)) s.category = 'その他';
+    return { suggestTitle: s.suggestTitle, deadlineDate: s.deadlineDate, category: s.category, reason: s.reason || '' };
+  });
+
+  return jsonOut_({ ok: true, suggestions: suggestions });
 }
 
 function handleSetField_(body) {
