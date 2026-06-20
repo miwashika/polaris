@@ -984,14 +984,19 @@ export default function App() {
                       <input value={polarisInput} onChange={(e)=>setPolarisInput(e.target.value)} onKeyDown={(e)=>{if(e.key==="Enter")addPolaris();}} placeholder="例：予防で患者の一生を支える" style={{ flex:1,minWidth:0,fontSize:13,color:C.ink,border:`1px solid ${C.line}`,borderRadius:9,padding:"9px 11px",background:"#fff" }}/>
                       <button onClick={addPolaris} style={{ fontSize:13,fontWeight:700,color:"#fff",background:C.q2,border:"none",borderRadius:9,padding:"0 16px",cursor:"pointer" }}>追加</button>
                     </div>
-                    {HAS_GAS&&(
-                      <div style={{ marginTop:16,paddingTop:14,borderTop:`1px solid ${C.lineSoft}` }}>
-                        <button onClick={()=>runCalendarFetch(true)} disabled={insightLoading} style={{ width:"100%",display:"flex",alignItems:"center",justifyContent:"center",gap:6,fontSize:13,fontWeight:600,color:insightLoading?C.sub:C.ink,background:C.lineSoft,border:`1px solid ${C.line}`,borderRadius:10,padding:"10px",cursor:insightLoading?"default":"pointer" }}>
-                          {insightLoading?"🔄 取得中…":"🔄 AIカレンダー提案を手動取得"}
-                        </button>
-                        {calSuggestions.length>0&&<div style={{ fontSize:11,color:C.sub,textAlign:"center",marginTop:6 }}>現在 {calSuggestions.length} 件の提案がキャッシュ済み</div>}
+                    <div style={{ marginTop:16,paddingTop:14,borderTop:`1px solid ${C.lineSoft}` }}>
+                      <div style={{ fontSize:11,color:C.sub,marginBottom:8 }}>
+                        AIカレンダー提案: <strong style={{ color:C.ink }}>{calSuggestions.length} 件</strong> キャッシュ済み
                       </div>
-                    )}
+                      <button
+                        onClick={()=>runCalendarFetch(true)}
+                        disabled={!HAS_GAS||insightLoading}
+                        style={{ width:"100%",display:"flex",alignItems:"center",justifyContent:"center",gap:6,fontSize:13,fontWeight:600,color:(!HAS_GAS||insightLoading)?C.sub:C.ink,background:C.lineSoft,border:`1px solid ${C.line}`,borderRadius:10,padding:"10px",cursor:(!HAS_GAS||insightLoading)?"default":"pointer" }}
+                      >
+                        {insightLoading?"🔄 取得中…":"🔄 AIカレンダー提案を手動取得"}
+                      </button>
+                      {!HAS_GAS&&<div style={{ fontSize:11,color:C.q1,textAlign:"center",marginTop:5 }}>GAS未接続のため取得できません</div>}
+                    </div>
                   </section>
                   <section style={{ flex:"1 1 300px",minWidth:270,background:"#fff",border:`1px solid ${C.line}`,borderRadius:12,padding:16 }}>
                     <h2 style={{ fontSize:15,fontWeight:800,margin:"0 0 4px" }}>方向性との整合チェック</h2>
