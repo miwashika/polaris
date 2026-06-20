@@ -759,7 +759,35 @@ export default function App() {
             </section>
           )}
 
-          <div style={{ textAlign:"center",fontSize:11,color:C.sub }}>{HAS_GAS?"Googleタスク接続済み":"GAS未接続 · サンプルデータ表示中"}</div>
+          {/* 同期エリア */}
+          <div style={{ border:`1px solid ${C.lineSoft}`,borderRadius:12,padding:"12px 14px",display:"flex",flexDirection:"column",gap:8 }}>
+            <div style={{ display:"flex",gap:8 }}>
+              <button
+                onClick={()=>runCalendarFetch(true)}
+                disabled={!HAS_GAS||insightLoading}
+                style={{ flex:1,display:"flex",alignItems:"center",justifyContent:"center",gap:5,fontSize:12,fontWeight:600,color:(!HAS_GAS||insightLoading)?C.sub:C.ink,background:"transparent",border:`1px solid ${C.line}`,borderRadius:9,padding:"8px 6px",cursor:(!HAS_GAS||insightLoading)?"default":"pointer" }}
+              >
+                {insightLoading?"🔄 取得中…":"🔄 カレンダー提案を同期"}
+              </button>
+              <button
+                onClick={async()=>{
+                  if(!HAS_GAS||syncingTasks) return;
+                  setSyncingTasks(true);
+                  try{ const r=await fetchTasks(); if(r!==null) setTasks(r); }catch{}
+                  finally{ setSyncingTasks(false); }
+                }}
+                disabled={!HAS_GAS||syncingTasks}
+                style={{ flex:1,display:"flex",alignItems:"center",justifyContent:"center",gap:5,fontSize:12,fontWeight:600,color:(!HAS_GAS||syncingTasks)?C.sub:C.ink,background:"transparent",border:`1px solid ${C.line}`,borderRadius:9,padding:"8px 6px",cursor:(!HAS_GAS||syncingTasks)?"default":"pointer" }}
+              >
+                {syncingTasks?"⏳ 同期中…":"🔄 タスクを手動同期"}
+              </button>
+            </div>
+            <div style={{ display:"flex",justifyContent:"center",gap:16 }}>
+              <span style={{ fontSize:10.5,color:C.sub }}>提案 {calSuggestions.length} 件</span>
+              <span style={{ fontSize:10.5,color:C.sub }}>タスク {tasks.length} 件キャッシュ済み</span>
+              <span style={{ fontSize:10.5,color:HAS_GAS?C.q2:C.sub }}>{HAS_GAS?"● GAS接続済み":"○ GAS未接続"}</span>
+            </div>
+          </div>
         </div>
       )}
 
@@ -1008,32 +1036,6 @@ export default function App() {
                     <div style={{ display:"flex",gap:8 }}>
                       <input value={polarisInput} onChange={(e)=>setPolarisInput(e.target.value)} onKeyDown={(e)=>{if(e.key==="Enter")addPolaris();}} placeholder="例：予防で患者の一生を支える" style={{ flex:1,minWidth:0,fontSize:13,color:C.ink,border:`1px solid ${C.line}`,borderRadius:9,padding:"9px 11px",background:"#fff" }}/>
                       <button onClick={addPolaris} style={{ fontSize:13,fontWeight:700,color:"#fff",background:C.q2,border:"none",borderRadius:9,padding:"0 16px",cursor:"pointer" }}>追加</button>
-                    </div>
-                    <div style={{ marginTop:16,paddingTop:14,borderTop:`1px solid ${C.lineSoft}` }}>
-                      <div style={{ fontSize:11,color:C.sub,marginBottom:8 }}>
-                        AIカレンダー提案: <strong style={{ color:C.ink }}>{calSuggestions.length} 件</strong> キャッシュ済み
-                      </div>
-                      <button
-                        onClick={()=>runCalendarFetch(true)}
-                        disabled={!HAS_GAS||insightLoading}
-                        style={{ width:"100%",display:"flex",alignItems:"center",justifyContent:"center",gap:6,fontSize:13,fontWeight:600,color:(!HAS_GAS||insightLoading)?C.sub:C.ink,background:C.lineSoft,border:`1px solid ${C.line}`,borderRadius:10,padding:"10px",cursor:(!HAS_GAS||insightLoading)?"default":"pointer" }}
-                      >
-                        {insightLoading?"🔄 取得中…":"🔄 AIカレンダー提案を手動取得"}
-                      </button>
-                      {!HAS_GAS&&<div style={{ fontSize:11,color:C.q1,textAlign:"center",marginTop:5 }}>GAS未接続のため取得できません</div>}
-                      <button
-                        onClick={async()=>{
-                          if(!HAS_GAS||syncingTasks) return;
-                          setSyncingTasks(true);
-                          try{ const r=await fetchTasks(); if(r!==null) setTasks(r); }catch{}
-                          finally{ setSyncingTasks(false); }
-                        }}
-                        disabled={!HAS_GAS||syncingTasks}
-                        style={{ marginTop:8,width:"100%",display:"flex",alignItems:"center",justifyContent:"center",gap:6,fontSize:13,fontWeight:600,color:(!HAS_GAS||syncingTasks)?C.sub:C.ink,background:C.lineSoft,border:`1px solid ${C.line}`,borderRadius:10,padding:"10px",cursor:(!HAS_GAS||syncingTasks)?"default":"pointer" }}
-                      >
-                        {syncingTasks?"⏳ 同期中…":"🔄 Googleタスクを手動同期"}
-                      </button>
-                      {HAS_GAS&&<div style={{ fontSize:11,color:C.sub,textAlign:"center",marginTop:5 }}>キャッシュ済み: {tasks.length} 件</div>}
                     </div>
                   </section>
                   <section style={{ flex:"1 1 300px",minWidth:270,background:"#fff",border:`1px solid ${C.line}`,borderRadius:12,padding:16 }}>
