@@ -266,12 +266,18 @@ export default function App() {
   const [editTask,      setEditTask]      = useState(null);
   const [editForm,      setEditForm]      = useState({title:'',important:1,due:'',span:'1ヶ月'});
 
-  // コヴィーマトリクス: 各象限リストへのスクロール用 ref（第1〜第4）
+  // コヴィーマトリクス: Planビュー内の各象限リストへのスクロール用 ref
   const quadRef1 = React.useRef(null);
   const quadRef2 = React.useRef(null);
   const quadRef3 = React.useRef(null);
   const quadRef4 = React.useRef(null);
   const quadRefs = [quadRef1, quadRef2, quadRef3, quadRef4];
+  // コヴィーマトリクス: 整理モーダル内の各象限リストへのスクロール用 ref（Planビューと分離）
+  const quadModalRef1 = React.useRef(null);
+  const quadModalRef2 = React.useRef(null);
+  const quadModalRef3 = React.useRef(null);
+  const quadModalRef4 = React.useRef(null);
+  const quadModalRefs = [quadModalRef1, quadModalRef2, quadModalRef3, quadModalRef4];
 
   const week = useMemo(()=>Array.from({length:7},(_,i)=>{
     const d=addDays(TODAY,i);
@@ -894,24 +900,63 @@ export default function App() {
               </div>
             </div>
           </div>
-          {/* 領域分布バー */}
-          {total>0&&(
-            <div style={{ background:"#fff",border:`1px solid ${C.line}`,borderRadius:12,padding:"10px 14px",marginBottom:14 }}>
-              <div style={{ display:"flex",height:12,borderRadius:6,overflow:"hidden",gap:2,background:C.lineSoft,marginBottom:8 }}>
-                {[1,2,3,4].map((n,i)=>tally[i]>0?<div key={n} title={`${QUAD[n].label} ${tally[i]}件`} style={{ width:`${(tally[i]/total)*100}%`,background:QUAD[n].color }}/>:null)}
-              </div>
-              <div style={{ display:"flex",gap:14,flexWrap:"wrap" }}>
-                {[1,2,3,4].map((n,i)=>(
-                  <div key={n} style={{ display:"flex",alignItems:"center",gap:5 }}>
-                    <span style={{ width:8,height:8,borderRadius:2,background:QUAD[n].color }}/>
-                    <span style={{ fontSize:11,color:C.sub }}>{QUAD[n].label}</span>
-                    <span style={{ fontFamily:MONO,fontSize:11,fontWeight:700,color:QUAD[n].color }}>{tally[i]}</span>
-                    <span style={{ fontFamily:MONO,fontSize:10,color:C.sub }}>{Math.round((tally[i]/total)*100)}%</span>
+          {/* コヴィーマトリクス × ヒートマップ */}
+          <div style={{ marginBottom:20 }}>
+            {/* 2×2 マトリクス */}
+            <div style={{ display:"grid",gridTemplateColumns:"1fr 1fr",border:`2px solid ${C.line}`,borderRadius:14,overflow:"hidden",marginBottom:4 }}>
+              {[1,2,3,4].map((n,i)=>{
+                const items=tasks.filter(t=>isActive(t)&&visible(t)&&quadrantOf(t)===n);
+                const meta=QUAD[n];
+                const bgMap={1:"#FDF0EF",2:"#EAF5F3",3:"#FDF7EE",4:"#F4F6F8"};
+                const isRight=i%2===1, isTop=i<2;
+                return(
+                  <div key={n}
+                    onClick={()=>quadRefs[n-1].current?.scrollIntoView({behavior:"smooth",block:"start"})}
+                    style={{ padding:"10px 12px",cursor:"pointer",background:bgMap[n],borderRight:isRight?"none":`1px solid ${C.line}`,borderBottom:isTop?`1px solid ${C.line}`:"none",minHeight:80,transition:"opacity .15s" }}
+                    onMouseEnter={e=>e.currentTarget.style.opacity=".82"}
+                    onMouseLeave={e=>e.currentTarget.style.opacity="1"}
+                  >
+                    <div style={{ display:"flex",alignItems:"baseline",gap:5,marginBottom:7 }}>
+                      <span style={{ fontFamily:MONO,fontSize:11,fontWeight:800,color:meta.color }}>{meta.label}</span>
+                      <span style={{ fontSize:10,color:C.sub,lineHeight:1 }}>{meta.name}</span>
+                      <span style={{ fontFamily:MONO,fontSize:12,fontWeight:800,color:meta.color,marginLeft:"auto" }}>{items.length}</span>
+                    </div>
+                    <div style={{ display:"flex",flexWrap:"wrap",gap:3 }}>
+                      {items.length===0
+                        ? <div style={{ width:10,height:10,borderRadius:2,background:C.line }}/>
+                        : items.map(t=>(
+                            <div key={t.id} title={t.title} style={{ width:10,height:10,borderRadius:2,background:meta.color,opacity:t.important===1?1:0.45 }}/>
+                          ))
+                      }
+                    </div>
                   </div>
-                ))}
-              </div>
+                );
+              })}
             </div>
-          )}
+            {/* 軸ラベル */}
+            <div style={{ display:"grid",gridTemplateColumns:"1fr 1fr",textAlign:"center",marginBottom:18 }}>
+              <div style={{ fontSize:10,color:C.sub,paddingBottom:2,borderBottom:`1px dashed ${C.line}` }}>← 緊急</div>
+              <div style={{ fontSize:10,color:C.sub,paddingBottom:2,borderBottom:`1px dashed ${C.line}` }}>緊急でない →</div>
+            </div>
+            {/* 第1〜第4 タスクリスト（常時表示）*/}
+            {[1,2,3,4].map((n,i)=>{
+              const items=tasks.filter(t=>isActive(t)&&visible(t)&&quadrantOf(t)===n).sort((a,b)=>{const da=daysUntil(a.due),db=daysUntil(b.due);if(da===null&&db===null)return 0;if(da===null)return 1;if(db===null)return -1;return da-db;});
+              const meta=QUAD[n];
+              return(
+                <div key={n} style={{ marginBottom:16 }}>
+                  <div ref={quadRefs[i]} style={{ display:"flex",alignItems:"center",gap:7,marginBottom:8,paddingTop:4,scrollMarginTop:60,borderLeft:`3px solid ${meta.color}`,paddingLeft:10 }}>
+                    <span style={{ fontFamily:MONO,fontSize:12,fontWeight:800,color:meta.color }}>{meta.label}</span>
+                    <span style={{ fontSize:12,fontWeight:600,color:C.ink }}>{meta.name}</span>
+                    <span style={{ fontFamily:MONO,fontSize:11,color:C.sub,marginLeft:"auto" }}>{items.length}件</span>
+                  </div>
+                  <div style={{ display:"flex",flexDirection:"column",gap:6 }}>
+                    {items.length===0&&<Empty text="タスクなし"/>}
+                    {items.map(t=><PlanCard key={t.id} t={t} mode="bar"/>)}
+                  </div>
+                </div>
+              );
+            })}
+          </div>
           {/* ボード本体 */}
           <div style={{ display:"flex",gap:14,alignItems:"flex-start",flexWrap:"wrap" }}>
             <div style={{ flex:"1 1 300px",minWidth:270,display:"flex",flexDirection:"column",gap:14 }}>
@@ -1008,7 +1053,7 @@ export default function App() {
                       const isRight=i%2===1, isTop=i<2;
                       return(
                         <div key={n}
-                          onClick={()=>quadRefs[n-1].current?.scrollIntoView({behavior:"smooth",block:"start"})}
+                          onClick={()=>quadModalRefs[n-1].current?.scrollIntoView({behavior:"smooth",block:"start"})}
                           style={{ padding:"10px 12px",cursor:"pointer",background:bgMap[n],borderRight:isRight?"none":`1px solid ${C.line}`,borderBottom:isTop?`1px solid ${C.line}`:"none",minHeight:72,transition:"opacity .15s" }}
                           onMouseEnter={e=>e.currentTarget.style.opacity=".85"}
                           onMouseLeave={e=>e.currentTarget.style.opacity="1"}
@@ -1041,7 +1086,7 @@ export default function App() {
                     const meta=QUAD[n];
                     return(
                       <div key={n} style={{ marginBottom:20 }}>
-                        <div ref={quadRefs[i]} style={{ display:"flex",alignItems:"center",gap:7,marginBottom:10,paddingTop:8,scrollMarginTop:64,borderLeft:`3px solid ${meta.color}`,paddingLeft:10 }}>
+                        <div ref={quadModalRefs[i]} style={{ display:"flex",alignItems:"center",gap:7,marginBottom:10,paddingTop:8,scrollMarginTop:64,borderLeft:`3px solid ${meta.color}`,paddingLeft:10 }}>
                           <span style={{ fontFamily:MONO,fontSize:12,fontWeight:800,color:meta.color }}>{meta.label}</span>
                           <span style={{ fontSize:12,fontWeight:600,color:C.ink }}>{meta.name}</span>
                           <span style={{ fontFamily:MONO,fontSize:11,color:C.sub,marginLeft:"auto" }}>{items.length}件</span>
