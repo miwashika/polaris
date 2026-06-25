@@ -127,9 +127,9 @@ export async function updateTask({ taskId, listId, title, due, importance, span,
  * @param {{ title: string, due: string|null, category: string }} params
  * @returns {Promise<{task}>}
  */
-export async function addTask({ title, due, category }) {
+export async function addTask({ title, due, category, calendarEventId }) {
   if (!HAS_GAS) throw new Error('GAS未接続');
-  const data = await gasPost({ action: 'addTask', title, due: due || null, category: category || 'その他' });
+  const data = await gasPost({ action: 'addTask', title, due: due || null, category: category || 'その他', calendarEventId: calendarEventId || null });
   if (!data.ok) throw new Error(data.error || 'addTask失敗');
   return { task: data.task };
 }

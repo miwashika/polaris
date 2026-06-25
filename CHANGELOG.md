@@ -4,6 +4,22 @@
 
 ---
 
+## [0.5.13] - 2026-06-25 · Beta
+
+### Fixed
+- **カレンダー提案の重複タスク化バグを修正**（GAS側の物理フィルタリングで根本解消）
+  - `handleAddTask_` でタスク保存時に `calendarEventId` を notes に永続化（`calendarEventId:ID` 形式）
+  - `getUsedCalendarEventIds_()` ヘルパーを新設: 全タスク（完了済み含む）の notes を走査し登録済みイベントIDを収集
+  - `handleGenerateCalendarTasks_` でカレンダーイベント取得直後・Gemini送信前にフィルタを適用 → タスク化済みイベントをプロンプト入力から物理除外
+  - フィルタ後に提案対象ゼロになった場合は Gemini API を呼び出さず `[]` で即時返却（トークン節約）
+  - Gemini の出力スキーマに `calendarEventId` を追加し、元イベントIDを提案と紐づけて返却
+  - `approveSuggestion` が `calendarEventId` を `apiAddTask` に渡してGASへ送信するよう統合
+
+### Changed
+- `parseMeta_` の key:value 分割を `split(':')` から `indexOf(':')` ベースに変更 — 値中にコロンが含まれる文字列（将来の拡張含む）でも安全にパース
+
+---
+
 ## [0.5.12] - 2026-06-21 · Beta
 
 ### Added

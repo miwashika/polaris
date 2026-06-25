@@ -144,14 +144,17 @@ function handleDelete_(body) {
 }
 
 function handleAddTask_(body) {
-  const { title, due, category } = body;
+  const { title, due, category, calendarEventId } = body;
   if (!title) return jsonOut_({ ok: false, error: 'title必須' });
 
   const cat    = CATEGORIES.includes(category) ? category : 'その他';
   const listId = getOrCreateList_(CAT_TO_LIST[cat]);
   const today  = Utilities.formatDate(new Date(), 'Asia/Tokyo', 'yyyy-MM-dd');
   const quad   = calcQuadrantFromSpan_(1, due || null, today);
-  const notes  = buildNotes_('', { importance: 1, span: '1ヶ月', tags: [], created: today, committed: false });
+  const notes  = buildNotes_('', {
+    importance: 1, span: '1ヶ月', tags: [], created: today, committed: false,
+    calendarEventId: calendarEventId || null,
+  });
   const obj    = { title: '[第' + quad + '] ' + title, notes: notes };
   if (due) obj.due = due + 'T00:00:00.000Z';
 
@@ -227,13 +230,22 @@ function handleGenerateCalendarTasks_(body) {
 
   if (evts.length === 0) return jsonOut_({ ok: true, suggestions: [] });
 
+  // ── 既タスク化済みイベントIDを収集し重複を物理フィルタ ──────────────
+  const usedEventIds = getUsedCalendarEventIds_();
+
   const eventList = evts.map(function(e) {
     return {
+      id:    e.getId(),
       title: e.getTitle(),
       start: Utilities.formatDate(e.getStartTime(), 'Asia/Tokyo', 'yyyy-MM-dd HH:mm'),
       end:   Utilities.formatDate(e.getEndTime(),   'Asia/Tokyo', 'yyyy-MM-dd HH:mm'),
     };
+  }).filter(function(ev) {
+    return !usedEventIds[ev.id];  // タスク化済みのイベントをGemini入力から除外
   });
+
+  // フィルタ後に提案対象がゼロになった場合は早期終了
+  if (eventList.length === 0) return jsonOut_({ ok: true, suggestions: [] });
 
   const apiKey = PropertiesService.getScriptProperties().getProperty('GEMINI_API_KEY');
   if (!apiKey) throw new Error('GEMINI_API_KEY 未設定');
@@ -261,7 +273,7 @@ ${longTermNote}
 日常ルーティン（移動・食事・定例MTG等）・Polaris と無関係な予定は無視してください。
 
 # 出力スキーマ（JSONのみ）
-[{"suggestTitle":"命令形タイトル","deadlineDate":"YYYY-MM-DD（予定の2〜3日前が目安）","category":${JSON.stringify(CATEGORIES)}のいずれか,"reason":"日本語30字以内の理由"}]
+[{"calendarEventId":"元の予定のid（必須・上記リストの id フィールドの値をそのまま使用）","suggestTitle":"命令形タイトル","deadlineDate":"YYYY-MM-DD（予定の2〜3日前が目安）","category":${JSON.stringify(CATEGORIES)}のいずれか,"reason":"日本語30字以内の理由"}]
 
 提案がゼロの場合は [] を返す。`;
 
@@ -288,7 +300,13 @@ ${longTermNote}
     return s.suggestTitle && s.deadlineDate && /^\d{4}-\d{2}-\d{2}$/.test(s.deadlineDate);
   }).map(function(s) {
     if (!CATEGORIES.includes(s.category)) s.category = 'その他';
-    return { suggestTitle: s.suggestTitle, deadlineDate: s.deadlineDate, category: s.category, reason: s.reason || '' };
+    return {
+      calendarEventId: s.calendarEventId || null,
+      suggestTitle:    s.suggestTitle,
+      deadlineDate:    s.deadlineDate,
+      category:        s.category,
+      reason:          s.reason || '',
+    };
   });
 
   return jsonOut_({ ok: true, suggestions: suggestions });
@@ -375,7 +393,8 @@ function parseTask_(item, listId, listName) {
     waiting:        listName === WAITING_LIST,
     someday:        listName === SOMEDAY_LIST,
     notes:          meta.humanNotes      || '',
-    manualQuadrant: meta.manualQuadrant  || null,
+    manualQuadrant:   meta.manualQuadrant  || null,
+    calendarEventId:  meta.calendarEventId || null,
   };
 }
 
@@ -389,10 +408,12 @@ function parseMeta_(notes) {
   const metaLine   = (parts[1] || '').trim();
   const result     = { humanNotes: humanNotes };
 
-  // "key:value key2:value2" 形式をパース
-  const tokens = metaLine.match(/(\w+):([^\s]+)/g) || [];
-  tokens.forEach(function(t) {
-    const [k, v] = t.split(':');
+  // "key:value key2:value2" 形式をパース（indexOf で安全に分割し、値中のコロンを保護）
+  const tokens = metaLine.match(/\w+:[^\s]+/g) || [];
+  tokens.forEach(function(tok) {
+    const sep = tok.indexOf(':');
+    const k   = tok.slice(0, sep);
+    const v   = tok.slice(sep + 1);
     if (k === 'tags') {
       result.tags = v ? v.split(',').filter(Boolean) : [];
     } else if (k === 'importance') {
@@ -402,6 +423,8 @@ function parseMeta_(notes) {
     } else if (k === 'manualQuadrant') {
       const n = Number(v);
       result.manualQuadrant = [1,2,3,4].includes(n) ? n : null;
+    } else if (k === 'calendarEventId') {
+      result.calendarEventId = v || null;
     } else {
       result[k] = v;
     }
@@ -417,9 +440,13 @@ function buildNotes_(humanNotes, meta) {
     'created:'    + (meta.created || Utilities.formatDate(new Date(),'Asia/Tokyo','yyyy-MM-dd')),
     'committed:'  + !!meta.committed,
   ];
-  // manualQuadrant が有効値の場合のみ保存（nullは省略してコンパクトに保つ）
+  // manualQuadrant が有効値の場合のみ保存
   if (meta.manualQuadrant && [1,2,3,4].includes(Number(meta.manualQuadrant))) {
     parts.push('manualQuadrant:' + Number(meta.manualQuadrant));
+  }
+  // calendarEventId が指定されている場合のみ保存（重複防止の永続キー）
+  if (meta.calendarEventId) {
+    parts.push('calendarEventId:' + meta.calendarEventId);
   }
   const h = (humanNotes || '').trim();
   return h ? h + '\n---\n' + parts.join(' ') : '---\n' + parts.join(' ');
@@ -547,6 +574,34 @@ ${text}`;
 
 function buildSpoken_(p) {
   return p.category + '、第' + calcQuadrantFromSpan_(p.importance, p.due, null) + '領域、' + p.span + 'で登録しました。' + p.title;
+}
+
+// ═══════════════════════════════════════════════
+// カレンダー重複排除
+// ═══════════════════════════════════════════════
+
+/**
+ * 全タスク（完了済み含む）の notes を走査し、
+ * 登録済み calendarEventId を {id: true} のマップで返す。
+ * handleGenerateCalendarTasks_ がGeminiに渡す前のフィルタに使用。
+ */
+function getUsedCalendarEventIds_() {
+  const result = {};
+  const lists  = Tasks.Tasklists.list({ maxResults: 100 }).items || [];
+  lists.forEach(function(list) {
+    const items = Tasks.Tasks.list(list.id, {
+      showCompleted: true,
+      showHidden:    true,
+      maxResults:    100,
+    }).items || [];
+    items.forEach(function(item) {
+      const meta = parseMeta_(item.notes || '');
+      if (meta.calendarEventId) {
+        result[meta.calendarEventId] = true;
+      }
+    });
+  });
+  return result;
 }
 
 // ═══════════════════════════════════════════════

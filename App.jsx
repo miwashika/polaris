@@ -417,7 +417,7 @@ export default function App() {
   const approveSuggestion=async(s)=>{
     setCalSuggestions(cs=>cs.filter(x=>x!==s));
     try{
-      const {task}=await apiAddTask({title:s.suggestTitle,due:s.deadlineDate,category:s.category});
+      const {task}=await apiAddTask({title:s.suggestTitle,due:s.deadlineDate,category:s.category,calendarEventId:s.calendarEventId||null});
       setTasks(ts=>[{...task,cat:task.category,important:task.importance,createdAt:task.created||''},...ts]);
     }catch(_){}
   };
